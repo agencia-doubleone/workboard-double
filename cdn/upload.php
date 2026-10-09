@@ -3,30 +3,28 @@
 // por um token de /api/media/sign do Workboard, e grava em uploads/{key}.
 // Responde com um recibo assinado que o Workboard confere antes de registrar.
 
-declare(strict_types=1);
-
 require __DIR__ . '/lib.php';
 
 media_cors();
 
-if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+if (media_get($_SERVER, 'REQUEST_METHOD', '') !== 'POST') {
     media_fail(405, 'method_not_allowed', 'Use POST.');
 }
 
 // Corpo acima do post_max_size: o PHP descarta tudo e $_POST/$_FILES chegam vazios.
-if (empty($_POST) && empty($_FILES) && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+if (empty($_POST) && empty($_FILES) && (int) media_get($_SERVER, 'CONTENT_LENGTH', 0) > 0) {
     media_fail(413, 'too_large', 'Arquivo maior que o limite do servidor de arquivos.');
 }
 
-$ticket = media_require_token('upload', $_POST['token'] ?? null);
-$key = $ticket['key'] ?? null;
+$ticket = media_require_token('upload', media_get($_POST, 'token'));
+$key = media_get($ticket, 'key');
 $extension = media_key_extension($key);
 if ($extension === null) {
     media_fail(400, 'invalid_key', 'Caminho de arquivo inválido.');
 }
 
-$file = $_FILES['file'] ?? null;
-if (!is_array($file) || !is_int($file['error'] ?? null)) {
+$file = media_get($_FILES, 'file');
+if (!is_array($file) || !is_int(media_get($file, 'error'))) {
     media_fail(400, 'missing_file', 'Nenhum arquivo recebido.');
 }
 switch ($file['error']) {
@@ -49,10 +47,10 @@ if (!is_uploaded_file($file['tmp_name'])) {
 
 // O token fixa o tamanho exato: não dá para autorizar um arquivo e mandar outro.
 $size = (int) $file['size'];
-if ($size !== ($ticket['size'] ?? null)) {
+if ($size !== media_get($ticket, 'size')) {
     media_fail(400, 'size_mismatch', 'O arquivo recebido não corresponde ao que foi autorizado.');
 }
-$maxSize = (int) (media_config()['max_size'] ?? 0);
+$maxSize = (int) media_get(media_config(), 'max_size', 0);
 if ($maxSize > 0 && $size > $maxSize) {
     media_fail(413, 'too_large', 'Arquivo maior que o limite do servidor de arquivos.');
 }
@@ -61,11 +59,14 @@ if ($maxSize > 0 && $size > $maxSize) {
 if (!class_exists('finfo')) {
     media_fail(500, 'fileinfo_missing', 'Ative a extensão fileinfo do PHP no servidor de arquivos.');
 }
-$detected = (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']) ?: 'application/octet-stream';
-if (in_array($detected, MEDIA_BLOCKED_TYPES, true)) {
+$finfo = new finfo(FILEINFO_MIME_TYPE);
+$detected = $finfo->file($file['tmp_name']) ?: 'application/octet-stream';
+if (in_array($detected, media_blocked_types(), true)) {
     media_fail(415, 'blocked_type', 'O conteúdo deste arquivo não é permitido.');
 }
-if (MEDIA_EXTENSIONS[$extension] === 'image' && strpos($detected, 'image/') !== 0) {
+$groups = media_extensions();
+if ($groups[$extension] === 'image' && strpos($detected, 'image/') !== 0
+    && !media_sniff_image($file['tmp_name'], $extension)) {
     media_fail(415, 'not_an_image', 'O arquivo não é uma imagem válida.');
 }
 
@@ -89,10 +90,10 @@ media_json(201, [
     'size' => $size,
     'receipt' => media_sign('receipt', [
         'key' => $key,
-        'name' => $ticket['name'] ?? '',
+        'name' => media_get($ticket, 'name', ''),
         'size' => $size,
-        'type' => $ticket['type'] ?? '',
-        'uid' => $ticket['uid'] ?? '',
+        'type' => media_get($ticket, 'type', ''),
+        'uid' => media_get($ticket, 'uid', ''),
         'iat' => time(),
     ]),
 ]);

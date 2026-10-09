@@ -18,6 +18,12 @@ export function formatDate(date: Date) {
   return dateFormat.format(date);
 }
 
+/** Data pura "AAAA-MM-DD" (ex.: aniversário) em "dd/mm/aaaa", sem passar por fuso. */
+export function formatCalendarDate(value: string) {
+  const [year, month, day] = value.split("-");
+  return year && month && day ? `${day}/${month}/${year}` : value;
+}
+
 export function formatDateTime(date: Date) {
   return dateTimeFormat.format(date);
 }

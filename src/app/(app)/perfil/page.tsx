@@ -28,7 +28,12 @@ async function ProfileContent() {
   const { user } = await requireSession();
   return (
     <ProfileForm
-      user={{ name: user.name, email: user.email, imageUrl: resolveMediaUrl(user.image) }}
+      user={{
+        name: user.name,
+        email: user.email,
+        imageUrl: resolveMediaUrl(user.image),
+        birthday: user.birthday ?? null,
+      }}
       uploadsEnabled={isMediaConfigured()}
     />
   );

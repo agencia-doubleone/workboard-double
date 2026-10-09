@@ -1,23 +1,21 @@
-import { BrandMark } from "@/components/shell/brand";
-import { ModeToggle } from "@/components/shell/mode-toggle";
+import { DoubleOneLogo } from "@/components/double-one-logo";
+import { FixedTheme } from "@/components/preferences/fixed-theme";
+import { AuthBackground } from "./auth-background";
 
-/** Moldura das telas públicas (login, redefinir senha). */
+/**
+ * Moldura das telas públicas (login, redefinir senha): fundo preto em tela
+ * cheia com as ondas de pontos e, no centro, o formulário num painel escuro
+ * translúcido. As cores são fixas (escuro grafite), sem seguir o tema de quem usa.
+ */
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <main className="relative flex min-h-svh flex-col items-center justify-center bg-sidebar p-6">
-      <div className="absolute top-4 right-4">
-        <ModeToggle />
-      </div>
-      <div className="flex w-full max-w-sm flex-col gap-6">
-        <div className="flex items-center gap-2.5 self-center">
-          <BrandMark />
-          <span className="text-sm font-semibold tracking-tight">Workboard</span>
-        </div>
+    <main className="auth-backdrop relative isolate flex min-h-svh items-center justify-center overflow-hidden p-5">
+      <FixedTheme />
+      <AuthBackground />
+      <section className="flex w-full max-w-[26rem] flex-col gap-8 rounded-2xl border bg-background/55 p-8 shadow-overlay inset-shadow-highlight backdrop-blur-xl sm:p-10">
+        <DoubleOneLogo className="h-10 self-center text-foreground" />
         {children}
-        <p className="text-center text-xs text-muted-foreground">
-          Acesso restrito à equipe da agência.
-        </p>
-      </div>
+      </section>
     </main>
   );
 }

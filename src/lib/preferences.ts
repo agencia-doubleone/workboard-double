@@ -34,6 +34,14 @@ export const STORAGE_KEYS = {
   sidebar: "wb:sidebar",
 } as const;
 
+/**
+ * Rotas com cores fixas (as telas públicas): ignoram tema e cor de destaque.
+ * Ao criar uma página nova em src/app/(auth), adicione aqui também; o
+ * <FixedTheme> do layout cobre a navegação no cliente, esta lista cobre a
+ * primeira carga (o script abaixo roda antes da hidratação).
+ */
+export const FIXED_THEME_PATHS = ["/login", "/redefinir-senha"];
+
 export function isThemeMode(value: unknown): value is ThemeMode {
   return THEME_MODES.includes(value as ThemeMode);
 }
@@ -52,6 +60,9 @@ export const preferencesScript = `(() => {
     const keys = ${JSON.stringify(STORAGE_KEYS)};
     const accents = ${JSON.stringify(ACCENTS.map((accent) => accent.id))};
     const root = document.documentElement;
+    const fixed = ${JSON.stringify(FIXED_THEME_PATHS)};
+    const path = location.pathname;
+    if (fixed.some((p) => path === p || path.startsWith(p + "/"))) root.dataset.fixedTheme = "";
     const mode = localStorage.getItem(keys.mode);
     const dark = mode === "dark" || (mode !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
     root.classList.toggle("dark", dark);

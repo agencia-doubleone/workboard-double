@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { AppShell } from "@/components/shell/app-shell";
 import { NavSection } from "@/components/shell/app-sidebar";
 import { UserMenu, UserMenuSkeleton } from "@/components/shell/user-menu";
+import { getFirstName, getGreeting, isBirthdayToday } from "@/lib/greeting";
 import { getSession, requireSession } from "@/lib/session";
 import { resolveMediaUrl } from "@/server/media";
 
@@ -32,6 +33,7 @@ async function AdminNav() {
 
 async function UserMenuLoader() {
   const { user } = await requireSession();
+  const now = new Date();
   return (
     <UserMenu
       user={{
@@ -40,6 +42,9 @@ async function UserMenuLoader() {
         role: user.role ?? "user",
         imageUrl: resolveMediaUrl(user.image),
       }}
+      firstName={getFirstName(user.name)}
+      greeting={getGreeting(now)}
+      isBirthday={isBirthdayToday(user.birthday, now)}
     />
   );
 }

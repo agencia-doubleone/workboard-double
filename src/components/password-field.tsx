@@ -14,6 +14,7 @@ import { generatePassword } from "@/lib/password";
 
 type PasswordFieldProps = {
   id: string;
+  name?: string;
   value: string;
   onChange?: (value: string) => void;
   invalid?: boolean;
@@ -28,6 +29,7 @@ type PasswordFieldProps = {
 
 export function PasswordField({
   id,
+  name,
   value,
   onChange,
   invalid,
@@ -51,6 +53,7 @@ export function PasswordField({
     <InputGroup>
       <InputGroupInput
         id={id}
+        name={name}
         type={visible ? "text" : "password"}
         value={value}
         onChange={(event) => onChange?.(event.target.value)}

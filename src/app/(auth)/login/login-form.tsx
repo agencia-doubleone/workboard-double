@@ -5,24 +5,20 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { z } from "zod";
 
+import { PasswordField } from "@/components/password-field";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { authClient } from "@/lib/auth-client";
 import { signInSchema, type SignInInput } from "@/lib/validations/auth";
+import { AuthHeading } from "../auth-heading";
 
 type FieldErrors = Partial<Record<keyof SignInInput, string[]>>;
 
 export function LoginForm() {
   const router = useRouter();
+  const [password, setPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -54,57 +50,57 @@ export function LoginForm() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Entrar</CardTitle>
-        <CardDescription>
-          Use o e-mail e a senha fornecidos pelo administrador.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {/* method="post" evita que um submit antes da hidratação vaze a senha na URL */}
-        <form method="post" onSubmit={handleSubmit} noValidate>
-          <FieldGroup>
-            {formError && (
-              <Alert variant="destructive">
-                <AlertCircleIcon />
-                <AlertDescription>{formError}</AlertDescription>
-              </Alert>
-            )}
-            <Field data-invalid={!!fieldErrors.email}>
-              <FieldLabel htmlFor="email">E-mail</FieldLabel>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                placeholder="voce@doubleone.com.br"
-                aria-invalid={!!fieldErrors.email}
-                disabled={isPending}
-                autoFocus
-              />
-              <FieldError>{fieldErrors.email?.[0]}</FieldError>
-            </Field>
-            <Field data-invalid={!!fieldErrors.password}>
-              <FieldLabel htmlFor="password">Senha</FieldLabel>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                aria-invalid={!!fieldErrors.password}
-                disabled={isPending}
-              />
-              <FieldError>{fieldErrors.password?.[0]}</FieldError>
-            </Field>
-            <Button type="submit" size="lg" disabled={isPending}>
-              {isPending && <Loader2Icon className="animate-spin" />}
-              {isPending ? "Entrando..." : "Entrar"}
-            </Button>
-          </FieldGroup>
-        </form>
-      </CardContent>
-    </Card>
+    <div className="flex flex-col gap-7">
+      <AuthHeading
+        title="Entrar no Workboard"
+        description="Use o e-mail e a senha fornecidos pelo administrador."
+      />
+      {/* method="post" evita que um submit antes da hidratação vaze a senha na URL */}
+      <form method="post" onSubmit={handleSubmit} noValidate>
+        <FieldGroup>
+          {formError && (
+            <Alert variant="destructive">
+              <AlertCircleIcon />
+              <AlertDescription>{formError}</AlertDescription>
+            </Alert>
+          )}
+          <Field data-invalid={!!fieldErrors.email}>
+            <FieldLabel htmlFor="email">E-mail</FieldLabel>
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              autoComplete="email"
+              placeholder="voce@doubleone.com.br"
+              aria-invalid={!!fieldErrors.email}
+              disabled={isPending}
+              autoFocus
+            />
+            <FieldError>{fieldErrors.email?.[0]}</FieldError>
+          </Field>
+          <Field data-invalid={!!fieldErrors.password}>
+            <FieldLabel htmlFor="password">Senha</FieldLabel>
+            <PasswordField
+              id="password"
+              name="password"
+              value={password}
+              onChange={setPassword}
+              autoComplete="current-password"
+              invalid={!!fieldErrors.password}
+              disabled={isPending}
+            />
+            <FieldError>{fieldErrors.password?.[0]}</FieldError>
+          </Field>
+          <Button type="submit" disabled={isPending} className="mt-1">
+            {isPending && <Loader2Icon className="animate-spin" />}
+            {isPending ? "Entrando..." : "Entrar"}
+          </Button>
+        </FieldGroup>
+      </form>
+      <p className="text-center text-xs text-muted-foreground">
+        Esqueceu a senha? Peça um novo link a um administrador.
+      </p>
+    </div>
   );
 }
 

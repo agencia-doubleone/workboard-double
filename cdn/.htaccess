@@ -1,6 +1,13 @@
 # Raiz do CDN: só upload.php, delete.php e a pasta uploads/ ficam acessíveis.
 Options -Indexes
 
+# O subdomínio fica dentro do www/ da hospedagem, e as regras de rewrite de um
+# .htaccess das pastas acima valem aqui também: arquivo inexistente vira loop
+# de redirecionamento e responde 500 em vez de 404. Desligar aqui corta isso.
+<IfModule mod_rewrite.c>
+    RewriteEngine Off
+</IfModule>
+
 <FilesMatch "^(lib\.php|config\.php|config\.example\.php|README\.md)$">
     <IfModule mod_authz_core.c>
         Require all denied

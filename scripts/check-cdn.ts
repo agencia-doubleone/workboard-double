@@ -1,5 +1,5 @@
-// Verifica o CDN de ponta a ponta (npm run cdn:check): envia uma imagem de
-// 1 pixel com um token assinado, confere o recibo, as proteções e apaga.
+// Verifica o CDN de ponta a ponta (npm run cdn:check): envia imagens de
+// 1 pixel (PNG e WebP) com um token assinado, confere o recibo, as proteções e apaga.
 // Não usa o banco nem o navegador; só MEDIA_CDN_URL e MEDIA_SIGNING_SECRET.
 
 import { env } from "@/env";
@@ -10,6 +10,12 @@ const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
   "base64",
 );
+// WebP é o formato da foto de perfil (src/lib/avatar-image.ts).
+const WEBP = Buffer.from("UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==", "base64");
+
+type Sample = { name: string; type: string };
+const PNG_SAMPLE: Sample = { name: "cdn-check.png", type: "image/png" };
+const WEBP_SAMPLE: Sample = { name: "cdn-check.webp", type: "image/webp" };
 
 let failures = 0;
 
@@ -41,18 +47,23 @@ async function main() {
   const origin = new URL(env.BETTER_AUTH_URL).origin;
   console.log(`CDN: ${base}\nOrigem do app: ${origin}\n`);
 
-  const upload = (token: string | null, bytes: Buffer = PNG) => {
+  const upload = (token: string | null, bytes: Buffer = PNG, sample = PNG_SAMPLE) => {
     const form = new FormData();
     if (token) form.append("token", token);
-    form.append("file", new Blob([new Uint8Array(bytes)], { type: "image/png" }), "cdn-check.png");
+    form.append("file", new Blob([new Uint8Array(bytes)], { type: sample.type }), sample.name);
     return fetch(`${base}/upload.php`, { method: "POST", body: form, headers: { Origin: origin } });
   };
-  const uploadToken = (key: string, size: number) =>
+  const uploadToken = (key: string, size: number, sample = PNG_SAMPLE) =>
     signMediaToken(
       "upload",
-      { key, name: "cdn-check.png", size, type: "image/png", uid: "cdn-check", exp: seconds() + 300 },
+      { key, name: sample.name, size, type: sample.type, uid: "cdn-check", exp: seconds() + 300 },
       secret,
     );
+  const remove = (key: string) =>
+    fetch(`${base}/delete.php`, {
+      method: "POST",
+      body: new URLSearchParams({ token: signMediaToken("delete", { key, exp: seconds() + 60 }, secret) }),
+    });
 
   // Proteções do servidor
   const listing = await fetch(`${base}/uploads/`);
@@ -101,6 +112,18 @@ async function main() {
     `x-content-type-options: ${file.headers.get("x-content-type-options")}`,
   );
 
+  // O libmagic de PHPs antigos não reconhece WebP: o upload.php confere pela assinatura.
+  const webpKey = buildMediaKey({ folder: "geral", fileName: WEBP_SAMPLE.name, extension: "webp" });
+  const webpStored = await upload(uploadToken(webpKey, WEBP.length, WEBP_SAMPLE), WEBP, WEBP_SAMPLE);
+  check(webpStored.status === 201, "upload.php aceita WebP (formato da foto de perfil)", await readJson(webpStored));
+  const webpFile = await fetch(`${base}/uploads/${webpKey}`);
+  check(
+    webpFile.status === 200 && (webpFile.headers.get("content-type") ?? "").startsWith("image/webp"),
+    "WebP servido como image/webp",
+    `status ${webpFile.status}, content-type: ${webpFile.headers.get("content-type")}`,
+  );
+  await remove(webpKey);
+
   // Tentativas que precisam falhar
   const replay = await upload(token);
   check(replay.status === 409, "o mesmo token não serve para um segundo envio", await readJson(replay));
@@ -115,10 +138,7 @@ async function main() {
   check(wrongSize.status === 400, "arquivo de tamanho diferente do autorizado é recusado", await readJson(wrongSize));
 
   // Exclusão (servidor para servidor)
-  const removal = await fetch(`${base}/delete.php`, {
-    method: "POST",
-    body: new URLSearchParams({ token: signMediaToken("delete", { key, exp: seconds() + 60 }, secret) }),
-  });
+  const removal = await remove(key);
   const removalBody = await readJson(removal);
   check(removal.status === 200 && removalBody.deleted === true, "delete.php apaga o arquivo", removalBody);
 

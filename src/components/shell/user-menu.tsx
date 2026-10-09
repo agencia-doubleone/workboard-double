@@ -1,39 +1,22 @@
 "use client";
 
-import { Menu as MenuPrimitive } from "@base-ui/react/menu";
-import {
-  ChevronsUpDownIcon,
-  LogOutIcon,
-  MonitorIcon,
-  MoonIcon,
-  SunIcon,
-  UserRoundIcon,
-} from "lucide-react";
+import { CakeIcon, LogOutIcon, UserRoundIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 
+import { BirthdayBalloons } from "@/components/birthday-balloons";
 import { Hint } from "@/components/hint";
-import {
-  setAccent,
-  setThemeMode,
-  usePreferences,
-} from "@/components/preferences/preferences-store";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UserAvatar } from "@/components/user-avatar";
 import { authClient } from "@/lib/auth-client";
-import { ACCENTS, isAccent, isThemeMode } from "@/lib/preferences";
-import { cn } from "@/lib/utils";
-import { sidebarFadeClass, useSidebarSurface } from "./sidebar-surface";
 
 export type UserMenuUser = {
   name: string;
@@ -43,21 +26,21 @@ export type UserMenuUser = {
   imageUrl: string | null;
 };
 
-const MODE_OPTIONS = [
-  { value: "light", label: "Claro", icon: SunIcon },
-  { value: "dark", label: "Escuro", icon: MoonIcon },
-  { value: "system", label: "Sistema", icon: MonitorIcon },
-] as const;
+type UserMenuProps = {
+  user: UserMenuUser;
+  /** Primeiro nome e "Bom dia"/"Boa tarde"/"Boa noite", calculados no servidor (src/lib/greeting.ts). */
+  firstName: string;
+  greeting: string;
+  /** Hoje é o aniversário: troca a saudação e solta os balões. */
+  isBirthday: boolean;
+};
 
-const optionClass =
-  "flex cursor-default items-center justify-center rounded-md border border-transparent text-muted-foreground outline-none transition-colors select-none data-highlighted:bg-accent data-highlighted:text-foreground data-checked:border-border data-checked:bg-accent data-checked:text-foreground";
-
-export function UserMenu({ user }: { user: UserMenuUser }) {
+/** Canto do header: saudação e a foto, que abre a conta (perfil e sair). */
+export function UserMenu({ user, firstName, greeting, isBirthday }: UserMenuProps) {
   const router = useRouter();
   const [isSigningOut, startSignOut] = useTransition();
-  const { mode, accent } = usePreferences();
-  const { collapsed, surface, onNavigate } = useSidebarSurface();
-  const accentLabel = ACCENTS.find((option) => option.id === accent)?.label;
+  // 0 = soltura automática (uma vez por dia); cada clique na saudação solta de novo.
+  const [launches, setLaunches] = useState(0);
 
   function handleSignOut() {
     startSignOut(async () => {
@@ -68,125 +51,73 @@ export function UserMenu({ user }: { user: UserMenuUser }) {
   }
 
   return (
-    <DropdownMenu>
-      <Hint label={user.name} side="right" sideOffset={14} disabled={!collapsed}>
-        <DropdownMenuTrigger className="flex w-full items-center gap-2.5 overflow-hidden rounded-md p-0.5 text-left outline-none transition-colors hover:bg-sidebar-accent/70 focus-visible:ring-2 focus-visible:ring-sidebar-ring/50 data-popup-open:bg-sidebar-accent">
-          <MenuAvatar user={user} />
-          <span className={cn("grid min-w-0 flex-1 leading-tight", sidebarFadeClass)}>
-            <span className="truncate text-[13px] font-medium">{user.name}</span>
-            <span className="truncate text-xs text-muted-foreground">{user.email}</span>
-          </span>
-          <ChevronsUpDownIcon
-            className={cn("mr-1 size-3.5 shrink-0 text-muted-foreground", sidebarFadeClass)}
-          />
+    <div className="flex items-center gap-3">
+      {isBirthday ? (
+        <>
+          <Hint label="Soltar os balões de novo" side="bottom">
+            <button
+              type="button"
+              onClick={() => setLaunches((count) => count + 1)}
+              className="hidden items-center gap-1.5 rounded-md px-1.5 py-1 text-sm font-medium text-primary-ink outline-none transition-colors hover:bg-primary-soft focus-visible:ring-2 focus-visible:ring-ring/50 sm:flex"
+            >
+              <CakeIcon className="size-4" />
+              Feliz aniversário, {firstName}!
+            </button>
+          </Hint>
+          <BirthdayBalloons key={launches} oncePerDay={launches === 0} />
+        </>
+      ) : (
+        <p className="hidden text-sm text-muted-foreground sm:block">
+          {greeting}, <span className="font-medium text-foreground">{firstName}</span>
+        </p>
+      )}
+      <span aria-hidden="true" className="hidden h-5 w-px bg-border sm:block" />
+
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label="Abrir menu da conta"
+          className="rounded-md outline-none transition-[opacity,box-shadow] hover:opacity-85 focus-visible:ring-2 focus-visible:ring-ring/50 data-popup-open:ring-2 data-popup-open:ring-ring/30"
+        >
+          <UserAvatar name={user.name} imageUrl={user.imageUrl} className="size-8" />
         </DropdownMenuTrigger>
-      </Hint>
 
-      <DropdownMenuContent
-        side={surface === "desktop" && collapsed ? "right" : "top"}
-        align={surface === "desktop" && collapsed ? "end" : "start"}
-        sideOffset={8}
-        className="w-64"
-      >
-        <div className="flex items-center gap-2.5 px-1.5 py-1.5">
-          <MenuAvatar user={user} />
-          <div className="grid min-w-0 flex-1 leading-tight">
-            <span className="truncate text-sm font-medium">{user.name}</span>
-            <span className="truncate text-xs text-muted-foreground">{user.email}</span>
+        <DropdownMenuContent align="end" sideOffset={8} className="w-64">
+          <div className="flex items-center gap-2.5 px-1.5 py-1.5">
+            <UserAvatar name={user.name} imageUrl={user.imageUrl} className="size-8" />
+            <div className="grid min-w-0 flex-1 leading-tight">
+              <span className="truncate text-sm font-medium">{user.name}</span>
+              <span className="truncate text-xs text-muted-foreground">{user.email}</span>
+            </div>
+            <span className="shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+              {user.role === "admin" ? "Admin" : "Membro"}
+            </span>
           </div>
-          <span className="shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-            {user.role === "admin" ? "Admin" : "Membro"}
-          </span>
-        </div>
 
-        <DropdownMenuSeparator />
+          <DropdownMenuSeparator />
 
-        <DropdownMenuItem render={<Link href="/perfil" />} onClick={onNavigate}>
-          <UserRoundIcon />
-          Meu perfil
-        </DropdownMenuItem>
+          <DropdownMenuItem render={<Link href="/perfil" />}>
+            <UserRoundIcon />
+            Meu perfil
+          </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
+          <DropdownMenuSeparator />
 
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>Tema</DropdownMenuLabel>
-          <MenuPrimitive.RadioGroup
-            value={mode}
-            onValueChange={(value) => isThemeMode(value) && setThemeMode(value)}
-            className="grid grid-cols-3 gap-1 px-1 pb-1"
-          >
-            {MODE_OPTIONS.map(({ value, label, icon: Icon }) => (
-              <MenuPrimitive.RadioItem
-                key={value}
-                value={value}
-                closeOnClick={false}
-                className={cn(optionClass, "h-12 flex-col gap-1 text-xs")}
-              >
-                <Icon className="size-4" />
-                {label}
-              </MenuPrimitive.RadioItem>
-            ))}
-          </MenuPrimitive.RadioGroup>
-        </DropdownMenuGroup>
-
-        <DropdownMenuGroup>
-          <DropdownMenuLabel className="flex items-center justify-between">
-            Cor de destaque
-            <span className="text-foreground">{accentLabel}</span>
-          </DropdownMenuLabel>
-          <MenuPrimitive.RadioGroup
-            value={accent}
-            onValueChange={(value) => isAccent(value) && setAccent(value)}
-            className="grid grid-cols-6 gap-1 px-1 pb-1"
-          >
-            {ACCENTS.map((option) => (
-              <MenuPrimitive.RadioItem
-                key={option.id}
-                value={option.id}
-                closeOnClick={false}
-                aria-label={option.label}
-                className={cn(optionClass, "group/swatch aspect-square")}
-              >
-                <span
-                  className="size-4 rounded-full ring-1 ring-black/10 ring-inset transition-shadow group-data-checked/swatch:ring-2 group-data-checked/swatch:ring-foreground/80 group-data-checked/swatch:ring-offset-2 group-data-checked/swatch:ring-offset-accent dark:ring-white/15"
-                  style={{ backgroundColor: option.swatch }}
-                />
-              </MenuPrimitive.RadioItem>
-            ))}
-          </MenuPrimitive.RadioGroup>
-        </DropdownMenuGroup>
-
-        <DropdownMenuSeparator />
-
-        <DropdownMenuItem onClick={handleSignOut} disabled={isSigningOut}>
-          <LogOutIcon />
-          {isSigningOut ? "Saindo..." : "Sair"}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <DropdownMenuItem onClick={handleSignOut} disabled={isSigningOut}>
+            <LogOutIcon />
+            {isSigningOut ? "Saindo..." : "Sair"}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
-
-function MenuAvatar({ user }: { user: UserMenuUser }) {
-  return (
-    <UserAvatar
-      name={user.name}
-      imageUrl={user.imageUrl}
-      className="size-7"
-      fallbackClassName="bg-sidebar-accent text-sidebar-foreground"
-    />
-  );
-}
-
 
 export function UserMenuSkeleton() {
   return (
-    <div className="flex items-center gap-2.5 p-0.5">
-      <Skeleton className="size-7 shrink-0 rounded-md bg-sidebar-accent" />
-      <div className={cn("grid flex-1 gap-1.5", sidebarFadeClass)}>
-        <Skeleton className="h-3 w-24 bg-sidebar-accent" />
-        <Skeleton className="h-2.5 w-32 bg-sidebar-accent" />
-      </div>
+    <div className="flex items-center gap-3">
+      <Skeleton className="hidden h-3.5 w-28 sm:block" />
+      <span aria-hidden="true" className="hidden h-5 w-px bg-border sm:block" />
+      <Skeleton className="size-8 rounded-md" />
     </div>
   );
 }

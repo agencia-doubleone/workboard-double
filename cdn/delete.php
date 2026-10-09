@@ -3,16 +3,14 @@
 // (POST token=...), nunca pelo navegador: por isso não responde a CORS.
 // Idempotente: apagar algo que não existe devolve ok com deleted=false.
 
-declare(strict_types=1);
-
 require __DIR__ . '/lib.php';
 
-if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+if (media_get($_SERVER, 'REQUEST_METHOD', '') !== 'POST') {
     media_fail(405, 'method_not_allowed', 'Use POST.');
 }
 
-$payload = media_require_token('delete', $_POST['token'] ?? null);
-$key = $payload['key'] ?? null;
+$payload = media_require_token('delete', media_get($_POST, 'token'));
+$key = media_get($payload, 'key');
 if (media_key_extension($key) === null) {
     media_fail(400, 'invalid_key', 'Caminho de arquivo inválido.');
 }

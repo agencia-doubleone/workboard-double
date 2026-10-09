@@ -4,7 +4,7 @@ import {
   getAuditActionDefinition,
   type AuditChanges,
 } from "@/lib/audit";
-import { formatDateTime, formatRelative } from "@/lib/format";
+import { formatCalendarDate, formatDateTime, formatRelative } from "@/lib/format";
 import { formatBytes } from "@/lib/media";
 import { isRole, ROLE_LABELS } from "@/lib/users";
 import type { AuditLogRow } from "@/server/audit/queries";
@@ -38,12 +38,14 @@ const DETAIL_LABELS: Record<string, string> = {
 function formatValue(key: string, value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
   if (key === "role" && isRole(value)) return ROLE_LABELS[value];
+  if ((key === "birthday" || key === "dueDate") && typeof value === "string") return formatCalendarDate(value);
   if (key === "source" && typeof value === "string") return SOURCES[value] ?? value;
   if (key === "expiresInHours") return `${value} horas`;
   if (key === "size" && typeof value === "number") return formatBytes(value);
   if (key === "passwordGenerated") return value ? "Gerada automaticamente" : "Definida pelo admin";
   if (key === "onlyOtherSessions") return value ? "Somente outras sessões do próprio admin" : "Todas";
   if (typeof value === "boolean") return value ? "Sim" : "Não";
+  if (Array.isArray(value)) return value.length ? value.map(String).join(", ") : "—";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }

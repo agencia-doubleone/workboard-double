@@ -13,6 +13,16 @@ const envSchema = z
     // Storage de arquivos (CDN na KingHost). Sem as duas, o upload fica desligado.
     MEDIA_CDN_URL: optional(z.url().transform((url) => url.replace(/\/+$/, ""))),
     MEDIA_SIGNING_SECRET: optional(z.string().min(32)),
+    // Cofre de senhas dos clientes: 32 bytes em base64 (openssl rand -base64 32).
+    // Sem ela, o cofre fica desligado. Trocar a chave torna as senhas salvas ilegíveis.
+    VAULT_ENCRYPTION_KEY: optional(
+      z
+        .string()
+        .refine(
+          (value) => Buffer.from(value, "base64").length === 32,
+          "VAULT_ENCRYPTION_KEY precisa ter 32 bytes em base64 (gere com: openssl rand -base64 32).",
+        ),
+    ),
   })
   .refine((env) => Boolean(env.MEDIA_CDN_URL) === Boolean(env.MEDIA_SIGNING_SECRET), {
     message: "Defina MEDIA_CDN_URL e MEDIA_SIGNING_SECRET juntas (ou nenhuma das duas).",

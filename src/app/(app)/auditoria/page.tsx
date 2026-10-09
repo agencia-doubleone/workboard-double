@@ -1,9 +1,11 @@
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import { z } from "zod";
 
 import { PageHeader } from "@/components/shell/page-header";
+import { PageSkeleton } from "@/components/shell/page-skeleton";
 import { buttonVariants } from "@/components/ui/button";
 import { db } from "@/db";
 import {
@@ -40,7 +42,16 @@ const searchSchema = z.object({
     .catch(undefined),
 });
 
-export default async function AuditoriaPage({ searchParams }: PageProps<"/auditoria">) {
+// Sessão e searchParams lidos dentro do <Suspense>, título incluído (veja usuarios/page.tsx).
+export default function AuditoriaPage({ searchParams }: PageProps<"/auditoria">) {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <AuditContent searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function AuditContent({ searchParams }: { searchParams: PageProps<"/auditoria">["searchParams"] }) {
   await requireAdmin();
   const raw = await searchParams;
   const params = searchSchema.parse({

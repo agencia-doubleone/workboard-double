@@ -20,6 +20,7 @@ export const AUDIT_ACTIONS = {
   "auth.sign_in_failed": { label: "Falha de login", category: "auth", tone: "warning" },
   "auth.sign_out": { label: "Logout", category: "auth" },
   "auth.password_reset": { label: "Senha redefinida pelo link", category: "auth" },
+  "auth.password_changed": { label: "Senha alterada pelo usuário", category: "auth" },
   "user.created": { label: "Usuário criado", category: "users" },
   "user.updated": { label: "Usuário editado", category: "users" },
   "user.password_set": { label: "Senha alterada pelo admin", category: "users" },
@@ -28,6 +29,9 @@ export const AUDIT_ACTIONS = {
   "user.activated": { label: "Usuário reativado", category: "users" },
   "user.sessions_revoked": { label: "Sessões encerradas", category: "users" },
   "user.deleted": { label: "Usuário excluído", category: "users", tone: "danger" },
+  "profile.updated": { label: "Perfil editado", category: "users" },
+  "profile.photo_updated": { label: "Foto de perfil alterada", category: "users" },
+  "profile.photo_removed": { label: "Foto de perfil removida", category: "users" },
   "media.uploaded": { label: "Arquivo enviado", category: "media" },
   "media.deleted": { label: "Arquivo excluído", category: "media", tone: "danger" },
 } as const satisfies Record<string, AuditActionDefinition>;

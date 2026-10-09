@@ -5,12 +5,14 @@ import { emailSchema, passwordSchema } from "./auth";
 
 const userIdSchema = z.string().min(1, "Usuário inválido.");
 
+export const personNameSchema = z
+  .string()
+  .trim()
+  .min(2, "Informe o nome.")
+  .max(100, "O nome pode ter no máximo 100 caracteres.");
+
 const userFieldsSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(2, "Informe o nome.")
-    .max(100, "O nome pode ter no máximo 100 caracteres."),
+  name: personNameSchema,
   email: emailSchema,
   role: z.enum(ROLES, "Escolha um papel."),
 });

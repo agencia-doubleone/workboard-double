@@ -7,7 +7,9 @@ import {
   MonitorIcon,
   MoonIcon,
   SunIcon,
+  UserRoundIcon,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
@@ -17,7 +19,6 @@ import {
   setThemeMode,
   usePreferences,
 } from "@/components/preferences/preferences-store";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,15 +29,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { UserAvatar } from "@/components/user-avatar";
 import { authClient } from "@/lib/auth-client";
 import { ACCENTS, isAccent, isThemeMode } from "@/lib/preferences";
-import { cn, getInitials } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { sidebarFadeClass, useSidebarSurface } from "./sidebar-surface";
 
 export type UserMenuUser = {
   name: string;
   email: string;
   role: string;
+  /** Foto já resolvida para URL (resolveMediaUrl), ou null. */
+  imageUrl: string | null;
 };
 
 const MODE_OPTIONS = [
@@ -52,7 +56,7 @@ export function UserMenu({ user }: { user: UserMenuUser }) {
   const router = useRouter();
   const [isSigningOut, startSignOut] = useTransition();
   const { mode, accent } = usePreferences();
-  const { collapsed, surface } = useSidebarSurface();
+  const { collapsed, surface, onNavigate } = useSidebarSurface();
   const accentLabel = ACCENTS.find((option) => option.id === accent)?.label;
 
   function handleSignOut() {
@@ -67,7 +71,7 @@ export function UserMenu({ user }: { user: UserMenuUser }) {
     <DropdownMenu>
       <Hint label={user.name} side="right" sideOffset={14} disabled={!collapsed}>
         <DropdownMenuTrigger className="flex w-full items-center gap-2.5 overflow-hidden rounded-md p-0.5 text-left outline-none transition-colors hover:bg-sidebar-accent/70 focus-visible:ring-2 focus-visible:ring-sidebar-ring/50 data-popup-open:bg-sidebar-accent">
-          <UserAvatar name={user.name} />
+          <MenuAvatar user={user} />
           <span className={cn("grid min-w-0 flex-1 leading-tight", sidebarFadeClass)}>
             <span className="truncate text-[13px] font-medium">{user.name}</span>
             <span className="truncate text-xs text-muted-foreground">{user.email}</span>
@@ -85,7 +89,7 @@ export function UserMenu({ user }: { user: UserMenuUser }) {
         className="w-64"
       >
         <div className="flex items-center gap-2.5 px-1.5 py-1.5">
-          <UserAvatar name={user.name} />
+          <MenuAvatar user={user} />
           <div className="grid min-w-0 flex-1 leading-tight">
             <span className="truncate text-sm font-medium">{user.name}</span>
             <span className="truncate text-xs text-muted-foreground">{user.email}</span>
@@ -94,6 +98,13 @@ export function UserMenu({ user }: { user: UserMenuUser }) {
             {user.role === "admin" ? "Admin" : "Membro"}
           </span>
         </div>
+
+        <DropdownMenuSeparator />
+
+        <DropdownMenuItem render={<Link href="/perfil" />} onClick={onNavigate}>
+          <UserRoundIcon />
+          Meu perfil
+        </DropdownMenuItem>
 
         <DropdownMenuSeparator />
 
@@ -156,13 +167,14 @@ export function UserMenu({ user }: { user: UserMenuUser }) {
   );
 }
 
-function UserAvatar({ name }: { name: string }) {
+function MenuAvatar({ user }: { user: UserMenuUser }) {
   return (
-    <Avatar className="size-7 rounded-md after:rounded-md">
-      <AvatarFallback className="rounded-md bg-sidebar-accent text-[11px] font-semibold text-sidebar-foreground">
-        {getInitials(name)}
-      </AvatarFallback>
-    </Avatar>
+    <UserAvatar
+      name={user.name}
+      imageUrl={user.imageUrl}
+      className="size-7"
+      fallbackClassName="bg-sidebar-accent text-sidebar-foreground"
+    />
   );
 }
 

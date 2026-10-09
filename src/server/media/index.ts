@@ -30,6 +30,7 @@ const UPLOAD_TICKET_TTL_SECONDS = 60 * 60;
 const RECEIPT_TTL_SECONDS = 60 * 60;
 const DELETE_TOKEN_TTL_SECONDS = 60;
 const CDN_TIMEOUT_MS = 15_000;
+const EXTERNAL_URL = /^https?:\/\//;
 
 type RequestMeta = ReturnType<typeof getRequestMeta>;
 type MediaRow = typeof media.$inferSelect;
@@ -52,6 +53,12 @@ function getConfig() {
 
 export function getMediaUrl(key: string) {
   return `${env.MEDIA_CDN_URL ?? ""}/uploads/${key}`;
+}
+
+/** Campos que guardam a chave do CDN (ex.: user.image): devolve a URL. URLs completas passam direto. */
+export function resolveMediaUrl(value: string | null | undefined) {
+  if (!value) return null;
+  return EXTERNAL_URL.test(value) ? value : getMediaUrl(value);
 }
 
 function nowInSeconds() {
@@ -84,7 +91,7 @@ export async function findMediaById(database: Database, id: string) {
   return found ?? null;
 }
 
-async function findMediaByKey(database: Database, key: string) {
+export async function findMediaByKey(database: Database, key: string) {
   const [found] = await database.select().from(media).where(eq(media.key, key)).limit(1);
   return found ?? null;
 }
@@ -160,10 +167,18 @@ export async function completeUpload(
   return { ok: true, data: toMediaItem(inserted) };
 }
 
-/** Apaga do CDN e do banco. Só quem enviou ou um admin. */
+/**
+ * Apaga do CDN e do banco. Só quem enviou ou um admin. Com audit: false, quem
+ * chama registra o próprio evento (ex.: trocar a foto de perfil).
+ */
 export async function deleteMedia(
   database: Database,
-  { id, actor, meta }: { id: string; actor: AuditActor & { role?: string | null }; meta: RequestMeta },
+  {
+    id,
+    actor,
+    meta,
+    audit = true,
+  }: { id: string; actor: AuditActor & { role?: string | null }; meta: RequestMeta; audit?: boolean },
 ): Promise<MediaResult<{ name: string }>> {
   const row = await findMediaById(database, id);
   if (!row) return fail(404, "Arquivo não encontrado.");
@@ -175,6 +190,7 @@ export async function deleteMedia(
   if (!removed.ok) return removed;
 
   await database.delete(media).where(eq(media.id, row.id));
+  if (!audit) return { ok: true, data: { name: row.name } };
   await createAuditRecorder(database)({
     action: "media.deleted",
     actor,
@@ -184,6 +200,24 @@ export async function deleteMedia(
     ...meta,
   });
   return { ok: true, data: { name: row.name } };
+}
+
+/**
+ * Apaga pelo caminho guardado em outro registro (ex.: a foto antiga em
+ * user.image). Ignora URLs externas e caminhos sem registro. Falhas vão para o
+ * log e voltam como false: quem chama já concluiu a operação principal.
+ */
+export async function deleteMediaByKey(
+  database: Database,
+  key: string | null | undefined,
+  options: { actor: AuditActor & { role?: string | null }; meta: RequestMeta; audit?: boolean },
+) {
+  if (!key || EXTERNAL_URL.test(key)) return false;
+  const row = await findMediaByKey(database, key);
+  if (!row) return false;
+  const result = await deleteMedia(database, { id: row.id, ...options });
+  if (!result.ok) console.error("[media] arquivo não foi apagado", key, result.error);
+  return result.ok;
 }
 
 async function deleteFromCdn(key: string): Promise<MediaResult<{ deleted: boolean }>> {

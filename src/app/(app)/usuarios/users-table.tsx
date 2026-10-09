@@ -53,7 +53,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { cn, getInitials } from "@/lib/utils";
+import { UserAvatar } from "@/components/user-avatar";
+import { cn } from "@/lib/utils";
 import { PASSWORD_RESET_EXPIRES_IN_HOURS, ROLE_LABELS } from "@/lib/users";
 import { revokeUserSessions, sendPasswordReset, setUserActive } from "./actions";
 import type { UserRow } from "./types";
@@ -210,9 +211,7 @@ function UserTableRow({
     <TableRow className={cn(!user.active && "text-muted-foreground")}>
       <TableCell>
         <div className="flex items-center gap-3">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-semibold text-foreground">
-            {getInitials(user.name)}
-          </span>
+          <UserAvatar name={user.name} imageUrl={user.imageUrl} />
           <div className="grid min-w-0 leading-tight">
             <span className="flex items-center gap-2 truncate font-medium text-foreground">
               {user.name}

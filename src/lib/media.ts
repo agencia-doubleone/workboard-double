@@ -45,7 +45,7 @@ export const MEDIA_TYPES = {
 export type MediaExtension = keyof typeof MEDIA_TYPES;
 
 /** Primeiro nível de pasta no CDN. Novas áreas do sistema entram aqui. */
-export const MEDIA_FOLDERS = ["geral", "trabalhos", "clientes"] as const;
+export const MEDIA_FOLDERS = ["geral", "trabalhos", "clientes", "usuarios"] as const;
 export type MediaFolder = (typeof MEDIA_FOLDERS)[number];
 
 export const MEDIA_NAME_MAX_LENGTH = 200;

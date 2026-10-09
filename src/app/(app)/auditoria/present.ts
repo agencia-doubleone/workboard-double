@@ -32,6 +32,7 @@ const DETAIL_LABELS: Record<string, string> = {
   size: "Tamanho",
   type: "Tipo",
   folder: "Pasta",
+  photoRemoved: "Foto de perfil apagada",
 };
 
 function formatValue(key: string, value: unknown): string {

@@ -2,7 +2,8 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/* Telas com cores fixas (data-fixed-theme no <html>, ex.: login) ficam sempre no escuro. */
+@custom-variant dark (&:is(.dark *, [data-fixed-theme] *));
 
 /* Estilos da sidebar desktop quando recolhida (atributo aplicado no <html>). */
 @custom-variant sidebar-collapsed (&:where([data-sidebar="collapsed"] [data-slot="app-sidebar"], [data-sidebar="collapsed"] [data-slot="app-sidebar"] *));
@@ -127,7 +128,8 @@
   --sidebar-ring: var(--primary);
 }
 
-.dark {
+.dark,
+[data-fixed-theme] {
   color-scheme: dark;
   --background: oklch(0.165 0 0);
   --foreground: oklch(0.96 0 0);
@@ -169,59 +171,224 @@
 }
 
 /*
- * Temas de cor (data-accent no <html>). Contraste conferido nos dois modos:
+ * Temas de cor (data-accent no <html>). Com data-fixed-theme (telas públicas)
+ * a cor não vale e o modo é sempre o escuro: fica o grafite escuro.
+ * Contraste conferido nos dois modos:
  * texto do botão >= 4.5:1, cor contra o fundo >= 3:1 e --primary-ink >= 4.5:1
  * sobre o fundo e sobre --primary-soft.
  */
-[data-accent="blue"] {
+[data-accent="blue"]:not([data-fixed-theme]) {
   --primary: oklch(0.53 0.2 262);
   --primary-foreground: oklch(0.985 0 0);
   --primary-ink: oklch(0.5 0.2 262);
 }
-.dark[data-accent="blue"] {
+.dark[data-accent="blue"]:not([data-fixed-theme]) {
   --primary: oklch(0.55 0.2 262);
   --primary-ink: oklch(0.74 0.13 262);
 }
 
-[data-accent="green"] {
+[data-accent="green"]:not([data-fixed-theme]) {
   --primary: oklch(0.52 0.12 162);
   --primary-foreground: oklch(0.985 0 0);
   --primary-ink: oklch(0.48 0.11 162);
 }
-.dark[data-accent="green"] {
+.dark[data-accent="green"]:not([data-fixed-theme]) {
   --primary: oklch(0.72 0.16 162);
   --primary-foreground: oklch(0.2 0.04 165);
   --primary-ink: var(--primary);
 }
 
-[data-accent="amber"] {
+[data-accent="amber"]:not([data-fixed-theme]) {
   --primary: oklch(0.68 0.16 62);
   --primary-foreground: oklch(0.18 0.035 55);
   --primary-ink: oklch(0.5 0.12 58);
 }
-.dark[data-accent="amber"] {
+.dark[data-accent="amber"]:not([data-fixed-theme]) {
   --primary: oklch(0.8 0.16 75);
   --primary-foreground: oklch(0.22 0.04 55);
   --primary-ink: var(--primary);
 }
 
-[data-accent="rose"] {
+[data-accent="rose"]:not([data-fixed-theme]) {
   --primary: oklch(0.56 0.22 17);
   --primary-foreground: oklch(0.985 0 0);
   --primary-ink: oklch(0.51 0.2 17);
 }
-.dark[data-accent="rose"] {
+.dark[data-accent="rose"]:not([data-fixed-theme]) {
   --primary: oklch(0.565 0.21 17);
   --primary-ink: oklch(0.74 0.14 17);
 }
 
-[data-accent="violet"] {
+[data-accent="violet"]:not([data-fixed-theme]) {
   --primary: oklch(0.53 0.25 293);
   --primary-foreground: oklch(0.985 0 0);
 }
-.dark[data-accent="violet"] {
+.dark[data-accent="violet"]:not([data-fixed-theme]) {
   --primary: oklch(0.565 0.23 293);
   --primary-ink: oklch(0.74 0.14 293);
+}
+
+/*
+ * Fundo das telas públicas (login, redefinir senha): preto puro, a cor da
+ * marca da Double One, com as ondas de pontos do <PatternWaves> por cima
+ * (src/app/(auth)/auth-background.tsx). O bloco do formulário usa os tokens
+ * normais, escuros por causa do data-fixed-theme.
+ */
+@layer components {
+  .auth-backdrop {
+    background-color: oklch(0 0 0);
+  }
+}
+
+/*
+ * Texto rico (editor Tiptap e exibição do HTML salvo, src/components/rich-text-editor.tsx).
+ * Mesma tipografia nos dois lugares. O preflight do Tailwind zera listas e
+ * títulos; aqui eles voltam, no tamanho do app.
+ */
+@layer components {
+  .rich-text {
+    font-size: 0.875rem;
+    line-height: 1.65;
+    overflow-wrap: anywhere;
+  }
+  .rich-text > * + * {
+    margin-top: 0.75em;
+  }
+  .rich-text h2 {
+    margin-top: 1.4em;
+    font-size: 1.0625rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .rich-text h3 {
+    margin-top: 1.2em;
+    font-size: 0.9375rem;
+    font-weight: 600;
+  }
+  .rich-text > :is(h2, h3):first-child {
+    margin-top: 0;
+  }
+  .rich-text ul,
+  .rich-text ol {
+    padding-left: 1.25rem;
+  }
+  .rich-text ul {
+    list-style: disc;
+  }
+  .rich-text ol {
+    list-style: decimal;
+  }
+  .rich-text li + li {
+    margin-top: 0.25em;
+  }
+  .rich-text li > p {
+    margin: 0;
+  }
+  .rich-text li::marker {
+    color: var(--muted-foreground);
+  }
+  .rich-text blockquote {
+    border-left: 2px solid var(--border);
+    padding-left: 0.875rem;
+    color: var(--muted-foreground);
+  }
+  .rich-text a {
+    color: var(--primary-ink);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .rich-text code {
+    border-radius: 0.25rem;
+    background-color: var(--muted);
+    padding: 0.1em 0.3em;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.85em;
+  }
+  .rich-text hr {
+    border-color: var(--border);
+  }
+  .rich-text img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.5rem;
+  }
+  .rich-text mark {
+    border-radius: 0.2em;
+    padding: 0 0.1em;
+    color: inherit;
+  }
+  /* Editor: imagem selecionada e alças de redimensionar (Image com resize). */
+  .rich-text [data-resize-container] {
+    display: inline-block;
+    max-width: 100%;
+  }
+  .rich-text .ProseMirror-selectednode img,
+  .rich-text img.ProseMirror-selectednode {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  .rich-text [data-resize-handle] {
+    z-index: 1;
+    width: 0.625rem;
+    height: 0.625rem;
+    margin: -0.3125rem;
+    border: 2px solid var(--background);
+    border-radius: 9999px;
+    background-color: var(--primary);
+    opacity: 0;
+    transition: opacity 120ms;
+  }
+  .rich-text [data-resize-handle="top-left"],
+  .rich-text [data-resize-handle="bottom-right"] {
+    cursor: nwse-resize;
+  }
+  .rich-text [data-resize-handle="top-right"],
+  .rich-text [data-resize-handle="bottom-left"] {
+    cursor: nesw-resize;
+  }
+  .rich-text [data-resize-wrapper]:hover [data-resize-handle],
+  .rich-text .ProseMirror-selectednode [data-resize-handle],
+  .rich-text [data-resize-state="true"] [data-resize-handle] {
+    opacity: 1;
+  }
+  /* Placeholder do Tiptap (extensão Placeholder). */
+  .rich-text p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
+    color: var(--muted-foreground);
+    pointer-events: none;
+  }
+}
+
+/*
+ * Balões do aniversário (src/components/birthday-balloons.tsx): cada um sobe
+ * de baixo da tela até sumir no topo e balança de leve no caminho. As cores
+ * festivas são fixas de propósito: é um momento, não um elemento da interface.
+ */
+@layer components {
+  .birthday-balloon {
+    position: absolute;
+    bottom: 0;
+    animation-name: birthday-balloon-rise;
+    animation-timing-function: cubic-bezier(0.37, 0, 0.63, 1);
+    animation-fill-mode: both;
+    will-change: transform;
+  }
+  .birthday-balloon-sway {
+    animation: birthday-balloon-sway ease-in-out infinite alternate;
+    transform-origin: 50% 0;
+  }
+}
+
+@keyframes birthday-balloon-rise {
+  from { transform: translate3d(0, 110%, 0); }
+  to { transform: translate3d(0, calc(-100vh - 110%), 0); }
+}
+@keyframes birthday-balloon-sway {
+  from { transform: translateX(calc(var(--sway) * -1)) rotate(-5deg); }
+  to { transform: translateX(var(--sway)) rotate(5deg); }
 }
 
 @layer base {

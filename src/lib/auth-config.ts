@@ -67,6 +67,13 @@ export function createAuth({ database, baseURL, secret }: CreateAuthOptions) {
     baseURL,
     secret,
     database: drizzleAdapter(database, { provider: "pg", schema }),
+    user: {
+      additionalFields: {
+        // Data de aniversário ("AAAA-MM-DD"), editada no perfil. Validada pelo
+        // Zod da Server Action; o /update-user HTTP está desligado.
+        birthday: { type: "string", required: false },
+      },
+    },
     emailAndPassword: {
       enabled: true,
       // Sistema interno: contas são criadas por um admin, não há cadastro público.

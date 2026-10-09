@@ -3,6 +3,7 @@ import {
   HouseIcon,
   ScrollTextIcon,
   Table2Icon,
+  TagsIcon,
   UsersIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -30,6 +31,7 @@ export const NAV_SECTIONS = {
     label: "Administração",
     items: [
       { title: "Usuários", href: "/usuarios", icon: UsersIcon },
+      { title: "Status de trabalhos", href: "/status-de-trabalhos", icon: TagsIcon },
       { title: "Auditoria", href: "/auditoria", icon: ScrollTextIcon },
     ],
   },

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { DatePicker } from "@/components/date-picker";
 import { PasswordField } from "@/components/password-field";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -31,7 +32,7 @@ import {
   type ProfileActionResult,
 } from "./actions";
 
-type ProfileUser = { name: string; email: string; imageUrl: string | null };
+type ProfileUser = { name: string; email: string; imageUrl: string | null; birthday: string | null };
 type FieldErrors = Record<string, string[] | undefined>;
 
 const SECTIONS = {
@@ -235,7 +236,7 @@ function PhotoCard({ user, uploadsEnabled }: { user: ProfileUser; uploadsEnabled
               {user.imageUrl ? "Trocar foto" : "Enviar foto"}
             </Button>
             {user.imageUrl && (
-              <Button variant="ghost" onClick={handleRemove} disabled={busy}>
+              <Button variant="destructive" onClick={handleRemove} disabled={busy}>
                 <Trash2Icon />
                 Remover
               </Button>
@@ -267,12 +268,13 @@ function PhotoCard({ user, uploadsEnabled }: { user: ProfileUser; uploadsEnabled
 
 function DetailsCard({ user }: { user: ProfileUser }) {
   const [name, setName] = useState(user.name);
+  const [birthday, setBirthday] = useState(user.birthday ?? "");
   const { isPending, error, fieldErrors, run, showValidation } = useProfileAction();
-  const dirty = name.trim() !== user.name;
+  const dirty = name.trim() !== user.name || birthday !== (user.birthday ?? "");
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    const parsed = updateProfileSchema.safeParse({ name });
+    const parsed = updateProfileSchema.safeParse({ name, birthday });
     if (!parsed.success) return showValidation(parsed.error);
     run(() => updateProfile(parsed.data), () => setName(parsed.data.name));
   }
@@ -300,6 +302,23 @@ function DetailsCard({ user }: { user: ProfileUser }) {
                 <FieldLabel htmlFor="profile-email">E-mail</FieldLabel>
                 <Input id="profile-email" value={user.email} readOnly disabled />
                 <FieldDescription>Para trocar o e-mail, fale com um administrador.</FieldDescription>
+              </Field>
+              <Field data-invalid={!!fieldErrors.birthday}>
+                <FieldLabel htmlFor="profile-birthday">Aniversário</FieldLabel>
+                <DatePicker
+                  id="profile-birthday"
+                  value={birthday}
+                  onChange={setBirthday}
+                  invalid={!!fieldErrors.birthday}
+                  disabled={isPending}
+                  fromYear={1900}
+                  disableFuture
+                />
+                {fieldErrors.birthday ? (
+                  <FieldError>{fieldErrors.birthday[0]}</FieldError>
+                ) : (
+                  <FieldDescription>Opcional. No dia, o Workboard comemora com você.</FieldDescription>
+                )}
               </Field>
             </FieldColumns>
           </FieldGroup>

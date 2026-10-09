@@ -6,6 +6,7 @@ import { headers } from "next/headers";
 import { z } from "zod";
 
 import { db } from "@/db";
+import type { AuditChanges } from "@/lib/audit";
 import { auth } from "@/lib/auth";
 import { getSession } from "@/lib/session";
 import {
@@ -65,16 +66,20 @@ export async function updateProfile(input: UpdateProfileInput): Promise<ProfileA
 
   const parsed = updateProfileSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
-  const { name } = parsed.data;
-  if (name === ctx.user.name) return { ok: true, message: "Nada para salvar." };
+  const { name, birthday } = parsed.data;
+  const current = { name: ctx.user.name, birthday: ctx.user.birthday ?? null };
+  const changes: AuditChanges = {};
+  if (name !== current.name) changes.name = { from: current.name, to: name };
+  if (birthday !== current.birthday) changes.birthday = { from: current.birthday, to: birthday };
+  if (Object.keys(changes).length === 0) return { ok: true, message: "Nada para salvar." };
 
   try {
-    await auth.api.updateUser({ body: { name }, headers: ctx.headers });
+    await auth.api.updateUser({ body: { name, birthday }, headers: ctx.headers });
     await recordAudit({
       action: "profile.updated",
       actor: ctx.user,
       entity: userEntity(ctx.user),
-      metadata: { changes: { name: { from: ctx.user.name, to: name } } },
+      metadata: { changes },
       ...ctx.meta,
     });
   } catch (error) {

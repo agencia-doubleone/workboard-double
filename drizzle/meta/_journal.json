@@ -22,6 +22,27 @@
       "when": 1791514399898,
       "tag": "0002_media",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791565407335,
+      "tag": "0003_user_birthday",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791568029812,
+      "tag": "0004_clients",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791572374121,
+      "tag": "0005_jobs",
+      "breakpoints": true
     }
   ]
 }

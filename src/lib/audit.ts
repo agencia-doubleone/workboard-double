@@ -5,6 +5,8 @@
 export const AUDIT_CATEGORIES = {
   auth: "Autenticação",
   users: "Usuários",
+  clients: "Clientes",
+  jobs: "Trabalhos",
   media: "Arquivos",
 } as const;
 export type AuditCategory = keyof typeof AUDIT_CATEGORIES;
@@ -32,6 +34,27 @@ export const AUDIT_ACTIONS = {
   "profile.updated": { label: "Perfil editado", category: "users" },
   "profile.photo_updated": { label: "Foto de perfil alterada", category: "users" },
   "profile.photo_removed": { label: "Foto de perfil removida", category: "users" },
+  "client.created": { label: "Cliente cadastrado", category: "clients" },
+  "client.updated": { label: "Cliente editado", category: "clients" },
+  "client.archived": { label: "Cliente arquivado", category: "clients", tone: "warning" },
+  "client.restored": { label: "Cliente reativado", category: "clients" },
+  "client.credential_created": { label: "Acesso adicionado ao cofre", category: "clients" },
+  "client.credential_updated": { label: "Acesso do cofre editado", category: "clients" },
+  "client.credential_deleted": { label: "Acesso do cofre excluído", category: "clients", tone: "danger" },
+  "client.credential_viewed": { label: "Senha do cofre revelada", category: "clients", tone: "warning" },
+  "client.credential_copied": { label: "Senha do cofre copiada", category: "clients", tone: "warning" },
+  "job.created": { label: "Trabalho cadastrado", category: "jobs" },
+  "job.updated": { label: "Trabalho editado", category: "jobs" },
+  "job.status_changed": { label: "Status do trabalho alterado", category: "jobs" },
+  "job.activated": { label: "Trabalho ativado", category: "jobs" },
+  "job.deactivated": { label: "Trabalho desativado", category: "jobs", tone: "warning" },
+  "job.deleted": { label: "Trabalho excluído", category: "jobs", tone: "danger" },
+  "job.message_deleted": { label: "Mensagem excluída", category: "jobs", tone: "warning" },
+  "job_status.created": { label: "Status de trabalho criado", category: "jobs" },
+  "job_status.updated": { label: "Status de trabalho editado", category: "jobs" },
+  "job_status.deleted": { label: "Status de trabalho excluído", category: "jobs", tone: "danger" },
+  "job_status.default_changed": { label: "Status padrão alterado", category: "jobs" },
+  "job_status.reordered": { label: "Ordem dos status alterada", category: "jobs" },
   "media.uploaded": { label: "Arquivo enviado", category: "media" },
   "media.deleted": { label: "Arquivo excluído", category: "media", tone: "danger" },
 } as const satisfies Record<string, AuditActionDefinition>;
@@ -40,6 +63,9 @@ export type AuditAction = keyof typeof AUDIT_ACTIONS;
 
 export const AUDIT_ENTITY_TYPES = {
   user: "Usuário",
+  client: "Cliente",
+  job: "Trabalho",
+  job_status: "Status de trabalho",
   media: "Arquivo",
 } as const;
 export type AuditEntityType = keyof typeof AUDIT_ENTITY_TYPES;
@@ -69,6 +95,30 @@ export const AUDIT_FIELD_LABELS: Record<string, string> = {
   name: "Nome",
   email: "E-mail",
   role: "Papel",
+  birthday: "Aniversário",
+  logo: "Logo",
+  website: "Site",
+  instagram: "Instagram",
+  facebook: "Facebook",
+  linkedin: "LinkedIn",
+  youtube: "YouTube",
+  ageRange: "Faixa etária",
+  genders: "Gênero",
+  socialClasses: "Classe social",
+  notes: "Informações gerais",
+  service: "Serviço",
+  url: "Endereço",
+  username: "Login",
+  password: "Senha",
+  client: "Cliente",
+  assignees: "Funcionários",
+  dueDate: "Entrega",
+  status: "Status",
+  active: "Ativo",
+  briefing: "Briefing",
+  textColor: "Cor do texto",
+  backgroundColor: "Cor do fundo",
+  isFinal: "Encerra o trabalho",
 };
 
 /** Formato padrão de alterações: { campo: { from, to } }. */

@@ -135,12 +135,6 @@ export function setThemeMode(mode: ThemeMode) {
   commit({ mode });
 }
 
-/** Alterna entre claro/escuro a partir do que está visível agora. */
-export function toggleThemeMode() {
-  const isDark = document.documentElement.classList.contains("dark");
-  commit({ mode: isDark ? "light" : "dark" });
-}
-
 export function setAccent(accent: Accent) {
   commit({ accent });
 }

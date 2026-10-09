@@ -29,8 +29,11 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-destructive-ink: var(--destructive-ink);
   --color-success: var(--success);
+  --color-success-ink: var(--success-ink);
   --color-warning: var(--warning);
+  --color-warning-ink: var(--warning-ink);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -39,6 +42,8 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-ink: var(--primary-ink);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -51,12 +56,26 @@
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
   --ease-snappy: cubic-bezier(0.2, 0, 0, 1);
+  /* Elevação: control (inputs, botões), raised (cards, tabelas), overlay
+     (menus, dialogs). Valores por modo em --elevation-* abaixo. */
+  --shadow-control: var(--elevation-control);
+  --shadow-raised: var(--elevation-raised);
+  --shadow-overlay: var(--elevation-overlay);
+  /* Filete claro no topo do botão primário (não é gradiente). */
+  --inset-shadow-highlight: inset 0 1px 0 0 oklch(1 0 0 / 0.14);
 }
 
 /*
  * Neutros. --sidebar é o "chrome" do app (fundo atrás do painel de conteúdo).
- * --primary é sobrescrito pelos temas de cor abaixo; ring e sidebar-primary
- * derivam dele.
+ * --primary é sobrescrito pelos temas de cor abaixo; ring, sidebar-primary e
+ * primary-soft derivam dele.
+ *
+ * Tons para texto e fundos suaves:
+ * - --primary-soft: fundo levemente tingido com a cor de destaque (badges,
+ *   ícones de estado vazio, linha selecionada).
+ * - --*-ink: a cor usada como TEXTO, sobre o fundo ou sobre o tom suave
+ *   (>= 4.5:1). Quando a cor pura não alcança esse contraste, o tema define
+ *   um tom mais escuro (claro) ou mais claro (escuro).
  */
 :root {
   color-scheme: light;
@@ -79,11 +98,20 @@
   --accent: oklch(0.955 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
+  --destructive-ink: oklch(0.52 0.21 27);
   --success: oklch(0.62 0.15 155);
+  --success-ink: oklch(0.5 0.12 155);
   --warning: oklch(0.7 0.16 65);
+  --warning-ink: oklch(0.52 0.12 60);
   --border: oklch(0.915 0 0);
   --input: oklch(0.9 0 0);
   --ring: var(--primary);
+  --primary-soft: color-mix(in oklab, var(--primary) 12%, var(--background));
+  --primary-ink: var(--primary);
+
+  --elevation-control: 0 1px 2px 0 oklch(0 0 0 / 0.05);
+  --elevation-raised: 0 1px 2px 0 oklch(0 0 0 / 0.04), 0 1px 3px 0 oklch(0 0 0 / 0.03);
+  --elevation-overlay: 0 12px 32px -8px oklch(0 0 0 / 0.14), 0 4px 8px -4px oklch(0 0 0 / 0.06);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -116,10 +144,18 @@
   --accent: oklch(0.245 0 0);
   --accent-foreground: oklch(0.96 0 0);
   --destructive: oklch(0.704 0.191 22.216);
+  --destructive-ink: var(--destructive);
   --success: oklch(0.7 0.15 155);
+  --success-ink: var(--success);
   --warning: oklch(0.78 0.15 70);
+  --warning-ink: var(--warning);
   --border: oklch(1 0 0 / 9%);
   --input: oklch(1 0 0 / 13%);
+  --primary-soft: color-mix(in oklab, var(--primary) 16%, var(--background));
+
+  --elevation-control: 0 1px 2px 0 oklch(0 0 0 / 0.25);
+  --elevation-raised: 0 1px 2px 0 oklch(0 0 0 / 0.3);
+  --elevation-overlay: 0 16px 40px -8px oklch(0 0 0 / 0.6), 0 4px 12px -4px oklch(0 0 0 / 0.4);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -133,41 +169,50 @@
 }
 
 /*
- * Temas de cor (data-accent no <html>). Contraste conferido:
- * texto do botão >= 4.5:1 e cor contra o fundo >= 3:1, nos dois modos.
+ * Temas de cor (data-accent no <html>). Contraste conferido nos dois modos:
+ * texto do botão >= 4.5:1, cor contra o fundo >= 3:1 e --primary-ink >= 4.5:1
+ * sobre o fundo e sobre --primary-soft.
  */
 [data-accent="blue"] {
   --primary: oklch(0.53 0.2 262);
   --primary-foreground: oklch(0.985 0 0);
+  --primary-ink: oklch(0.5 0.2 262);
 }
 .dark[data-accent="blue"] {
   --primary: oklch(0.55 0.2 262);
+  --primary-ink: oklch(0.74 0.13 262);
 }
 
 [data-accent="green"] {
   --primary: oklch(0.52 0.12 162);
   --primary-foreground: oklch(0.985 0 0);
+  --primary-ink: oklch(0.48 0.11 162);
 }
 .dark[data-accent="green"] {
   --primary: oklch(0.72 0.16 162);
   --primary-foreground: oklch(0.2 0.04 165);
+  --primary-ink: var(--primary);
 }
 
 [data-accent="amber"] {
   --primary: oklch(0.68 0.16 62);
   --primary-foreground: oklch(0.18 0.035 55);
+  --primary-ink: oklch(0.5 0.12 58);
 }
 .dark[data-accent="amber"] {
   --primary: oklch(0.8 0.16 75);
   --primary-foreground: oklch(0.22 0.04 55);
+  --primary-ink: var(--primary);
 }
 
 [data-accent="rose"] {
   --primary: oklch(0.56 0.22 17);
   --primary-foreground: oklch(0.985 0 0);
+  --primary-ink: oklch(0.51 0.2 17);
 }
 .dark[data-accent="rose"] {
   --primary: oklch(0.565 0.21 17);
+  --primary-ink: oklch(0.74 0.14 17);
 }
 
 [data-accent="violet"] {
@@ -176,6 +221,7 @@
 }
 .dark[data-accent="violet"] {
   --primary: oklch(0.565 0.23 293);
+  --primary-ink: oklch(0.74 0.14 293);
 }
 
 @layer base {

@@ -5,6 +5,7 @@
 export const AUDIT_CATEGORIES = {
   auth: "Autenticação",
   users: "Usuários",
+  media: "Arquivos",
 } as const;
 export type AuditCategory = keyof typeof AUDIT_CATEGORIES;
 
@@ -27,12 +28,15 @@ export const AUDIT_ACTIONS = {
   "user.activated": { label: "Usuário reativado", category: "users" },
   "user.sessions_revoked": { label: "Sessões encerradas", category: "users" },
   "user.deleted": { label: "Usuário excluído", category: "users", tone: "danger" },
+  "media.uploaded": { label: "Arquivo enviado", category: "media" },
+  "media.deleted": { label: "Arquivo excluído", category: "media", tone: "danger" },
 } as const satisfies Record<string, AuditActionDefinition>;
 
 export type AuditAction = keyof typeof AUDIT_ACTIONS;
 
 export const AUDIT_ENTITY_TYPES = {
   user: "Usuário",
+  media: "Arquivo",
 } as const;
 export type AuditEntityType = keyof typeof AUDIT_ENTITY_TYPES;
 

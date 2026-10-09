@@ -1,0 +1,32 @@
+# Arquivos enviados: públicos por link, sem listagem e sem executar nada.
+# O upload.php só grava extensões da lista permitida; isto é a segunda trava.
+Options -Indexes -ExecCGI
+
+<FilesMatch "\.(php[0-9]?|phtml|phar|pht|phps|cgi|pl|py|sh|asp|aspx|jsp|shtml?|html?|xhtml|js|mjs|svgz?)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+<IfModule mod_mime.c>
+    RemoveHandler .php .php5 .php7 .php8 .phtml .phar .cgi .pl .py .sh
+    AddType image/avif .avif
+    AddType image/webp .webp
+    AddType video/webm .webm
+    AddType video/quicktime .mov
+    AddType audio/mp4 .m4a
+    AddType text/csv .csv
+    AddCharset utf-8 .txt .csv
+</IfModule>
+
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    # Nomes únicos que nunca são sobrescritos: pode guardar em cache para sempre.
+    Header set Cache-Control "public, max-age=31536000, immutable"
+    # Arquivos públicos: permite ler de outras origens (ex.: gerar miniatura no navegador).
+    Header set Access-Control-Allow-Origin "*"
+</IfModule>

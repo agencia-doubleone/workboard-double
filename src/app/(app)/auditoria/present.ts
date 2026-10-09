@@ -5,6 +5,7 @@ import {
   type AuditChanges,
 } from "@/lib/audit";
 import { formatDateTime, formatRelative } from "@/lib/format";
+import { formatBytes } from "@/lib/media";
 import { isRole, ROLE_LABELS } from "@/lib/users";
 import type { AuditLogRow } from "@/server/audit/queries";
 import type { AuditRow } from "./types";
@@ -27,6 +28,10 @@ const DETAIL_LABELS: Record<string, string> = {
   name: "Nome",
   role: "Papel",
   passwordGenerated: "Senha inicial",
+  key: "Caminho no CDN",
+  size: "Tamanho",
+  type: "Tipo",
+  folder: "Pasta",
 };
 
 function formatValue(key: string, value: unknown): string {
@@ -34,6 +39,7 @@ function formatValue(key: string, value: unknown): string {
   if (key === "role" && isRole(value)) return ROLE_LABELS[value];
   if (key === "source" && typeof value === "string") return SOURCES[value] ?? value;
   if (key === "expiresInHours") return `${value} horas`;
+  if (key === "size" && typeof value === "number") return formatBytes(value);
   if (key === "passwordGenerated") return value ? "Gerada automaticamente" : "Definida pelo admin";
   if (key === "onlyOtherSessions") return value ? "Somente outras sessões do próprio admin" : "Todas";
   if (typeof value === "boolean") return value ? "Sim" : "Não";

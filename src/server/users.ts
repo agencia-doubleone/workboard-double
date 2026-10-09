@@ -30,6 +30,7 @@ export async function listUsers(database: Database) {
       id: user.id,
       name: user.name,
       email: user.email,
+      image: user.image,
       role: user.role,
       banned: user.banned,
       banReason: user.banReason,

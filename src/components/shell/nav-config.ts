@@ -46,6 +46,13 @@ export function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/** Páginas fora da navegação lateral (acessadas pelo menu do usuário). */
+const EXTRA_TITLES: Record<string, string> = {
+  "/perfil": "Meu perfil",
+};
+
 export function getNavTitle(pathname: string) {
-  return ALL_ITEMS.find((item) => isActivePath(pathname, item.href))?.title;
+  return (
+    ALL_ITEMS.find((item) => isActivePath(pathname, item.href))?.title ?? EXTRA_TITLES[pathname]
+  );
 }

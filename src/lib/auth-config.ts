@@ -37,6 +37,11 @@ const ADMIN_HTTP_PATHS = [
   "/admin/has-permission",
 ];
 
+// Perfil e senha do próprio usuário também só por Server Actions
+// (src/app/(app)/perfil/actions.ts): a foto precisa ser um arquivo do CDN
+// enviado pela pessoa, e tudo fica na auditoria.
+const PROFILE_HTTP_PATHS = ["/update-user", "/change-password"];
+
 // O Better Auth engole erros do sendResetPassword (só loga). Este store
 // permite a quem disparou o reset saber se o e-mail falhou de verdade.
 type ResetDelivery = { error?: unknown };
@@ -101,7 +106,7 @@ export function createAuth({ database, baseURL, secret }: CreateAuthOptions) {
       storage: "database",
     },
     // Reset de senha por enquanto só é disparado pelo admin.
-    disabledPaths: [...ADMIN_HTTP_PATHS, "/request-password-reset"],
+    disabledPaths: [...ADMIN_HTTP_PATHS, ...PROFILE_HTTP_PATHS, "/request-password-reset"],
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
         if (ctx.path !== "/sign-out") return;

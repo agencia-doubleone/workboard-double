@@ -4,6 +4,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { NavSection } from "@/components/shell/app-sidebar";
 import { UserMenu, UserMenuSkeleton } from "@/components/shell/user-menu";
 import { getSession, requireSession } from "@/lib/session";
+import { resolveMediaUrl } from "@/server/media";
 
 export default function AppLayout({ children }: LayoutProps<"/">) {
   return (
@@ -33,7 +34,12 @@ async function UserMenuLoader() {
   const { user } = await requireSession();
   return (
     <UserMenu
-      user={{ name: user.name, email: user.email, role: user.role ?? "user" }}
+      user={{
+        name: user.name,
+        email: user.email,
+        role: user.role ?? "user",
+        imageUrl: resolveMediaUrl(user.image),
+      }}
     />
   );
 }

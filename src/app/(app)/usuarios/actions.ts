@@ -27,6 +27,7 @@ import {
   type UpdateUserInput,
 } from "@/lib/validations/users";
 import { getRequestMeta, recordAudit, userEntity } from "@/server/audit";
+import { deleteMediaByKey } from "@/server/media";
 import { countActiveSessions, findUserById, isEmailTaken } from "@/server/users";
 
 export type ActionResult =
@@ -387,11 +388,20 @@ export async function deleteUser(input: { userId: string }): Promise<ActionResul
     // Remove sessões, contas e o usuário. Na auditoria, os eventos ficam
     // (actor_id vira null, nome/e-mail continuam copiados no registro).
     await auth.api.removeUser({ body: { userId: target.id }, headers: ctx.headers });
+    // A foto de perfil sai do CDN junto (o link era público).
+    const photoRemoved = target.image
+      ? await deleteMediaByKey(db, target.image, { actor: ctx.actor, meta: ctx.meta, audit: false })
+      : undefined;
     await recordAudit({
       action: "user.deleted",
       actor: ctx.actor,
       entity: userEntity(target),
-      metadata: { name: target.name, role: target.role, sessionsRevoked: sessions },
+      metadata: {
+        name: target.name,
+        role: target.role,
+        sessionsRevoked: sessions,
+        ...(photoRemoved !== undefined && { photoRemoved }),
+      },
       ...ctx.meta,
     });
   } catch (error) {

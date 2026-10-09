@@ -48,11 +48,13 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFrame,
   TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { cn, getInitials } from "@/lib/utils";
+import { UserAvatar } from "@/components/user-avatar";
+import { cn } from "@/lib/utils";
 import { PASSWORD_RESET_EXPIRES_IN_HOURS, ROLE_LABELS } from "@/lib/users";
 import { revokeUserSessions, sendPasswordReset, setUserActive } from "./actions";
 import type { UserRow } from "./types";
@@ -143,17 +145,17 @@ export function UsersTable({ users, currentUserId, emailEnabled }: UsersTablePro
         </Button>
       </div>
 
-      <div className="overflow-hidden rounded-xl border">
+      <TableFrame>
         <Table>
-          <TableHeader className="bg-muted/40">
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="pl-4">Usuário</TableHead>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Usuário</TableHead>
               <TableHead>Papel</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Sessões</TableHead>
               <TableHead>Último acesso</TableHead>
               <TableHead>Criado em</TableHead>
-              <TableHead className="w-12 pr-4">
+              <TableHead className="w-12">
                 <span className="sr-only">Ações</span>
               </TableHead>
             </TableRow>
@@ -178,7 +180,7 @@ export function UsersTable({ users, currentUserId, emailEnabled }: UsersTablePro
             </EmptyHeader>
           </Empty>
         )}
-      </div>
+      </TableFrame>
 
       {dialog && (
         <UserDialogs
@@ -207,18 +209,16 @@ function UserTableRow({
 
   return (
     <TableRow className={cn(!user.active && "text-muted-foreground")}>
-      <TableCell className="pl-4">
+      <TableCell>
         <div className="flex items-center gap-3">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-semibold text-foreground">
-            {getInitials(user.name)}
-          </span>
+          <UserAvatar name={user.name} imageUrl={user.imageUrl} />
           <div className="grid min-w-0 leading-tight">
             <span className="flex items-center gap-2 truncate font-medium text-foreground">
               {user.name}
               {isSelf && (
-                <span className="rounded-sm border px-1 py-px text-[10px] font-medium text-muted-foreground">
+                <Badge variant="outline" className="h-4 px-1 text-[10px]">
                   Você
-                </span>
+                </Badge>
               )}
             </span>
             <span className="truncate text-xs text-muted-foreground">{user.email}</span>
@@ -226,7 +226,7 @@ function UserTableRow({
         </div>
       </TableCell>
       <TableCell>
-        <Badge variant={user.role === "admin" ? "secondary" : "outline"}>
+        <Badge variant={user.role === "admin" ? "soft" : "outline"}>
           {ROLE_LABELS[user.role]}
         </Badge>
       </TableCell>
@@ -246,7 +246,7 @@ function UserTableRow({
         )}
       </TableCell>
       <TableCell className="tabular-nums">{user.createdAt}</TableCell>
-      <TableCell className="pr-4">
+      <TableCell>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={

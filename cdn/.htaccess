@@ -1,0 +1,12 @@
+# Raiz do CDN: só upload.php, delete.php e a pasta uploads/ ficam acessíveis.
+Options -Indexes
+
+<FilesMatch "^(lib\.php|config\.php|config\.example\.php|README\.md)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>

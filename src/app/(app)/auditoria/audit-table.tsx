@@ -24,6 +24,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFrame,
   TableHead,
   TableHeader,
   TableRow,
@@ -58,16 +59,16 @@ export function AuditTable({ rows }: { rows: AuditRow[] }) {
 
   return (
     <>
-      <div className="overflow-hidden rounded-xl border">
+      <TableFrame>
         <Table>
-          <TableHeader className="bg-muted/40">
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="pl-4">Quando</TableHead>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Quando</TableHead>
               <TableHead>Evento</TableHead>
               <TableHead>Ator</TableHead>
               <TableHead>Alvo</TableHead>
               <TableHead>IP</TableHead>
-              <TableHead className="w-12 pr-4">
+              <TableHead className="w-12">
                 <span className="sr-only">Detalhes</span>
               </TableHead>
             </TableRow>
@@ -79,7 +80,7 @@ export function AuditTable({ rows }: { rows: AuditRow[] }) {
                 onClick={() => openDetails(row)}
                 className="cursor-pointer"
               >
-                <TableCell className="pl-4 whitespace-nowrap">
+                <TableCell>
                   <Hint label={row.when.absolute}>
                     <span className="cursor-default">{row.when.relative}</span>
                   </Hint>
@@ -103,7 +104,7 @@ export function AuditTable({ rows }: { rows: AuditRow[] }) {
                 <TableCell className="font-mono text-xs text-muted-foreground">
                   {row.ipAddress ?? "—"}
                 </TableCell>
-                <TableCell className="pr-4">
+                <TableCell>
                   <Button
                     variant="ghost"
                     size="icon-sm"
@@ -120,7 +121,7 @@ export function AuditTable({ rows }: { rows: AuditRow[] }) {
             ))}
           </TableBody>
         </Table>
-      </div>
+      </TableFrame>
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="w-full gap-0 data-[side=right]:sm:max-w-md">
@@ -194,7 +195,7 @@ function AuditDetails({ row, onNavigate }: { row: AuditRow; onNavigate: () => vo
                   <Link
                     href={row.entity.href}
                     onClick={onNavigate}
-                    className="inline-flex w-fit items-center gap-1 text-xs text-primary underline-offset-4 hover:underline"
+                    className="inline-flex w-fit items-center gap-1 text-xs text-primary-ink underline-offset-4 hover:underline"
                   >
                     <HistoryIcon className="size-3" />
                     Ver histórico deste registro

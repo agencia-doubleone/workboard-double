@@ -5,6 +5,7 @@ export type UserRow = {
   id: string;
   name: string;
   email: string;
+  imageUrl: string | null;
   role: Role;
   active: boolean;
   banReason: string | null;

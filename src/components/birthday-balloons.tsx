@@ -7,7 +7,8 @@ import { useEffect, useState } from "react";
 
 const COLORS = ["#ef4444", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ec4899", "#f97316", "#14b8a6"];
 const COUNT = 18;
-const SEEN_KEY = "wb:birthday-balloons";
+// "v2": a marca antiga podia ter sido gravada sem os balões subirem (veja o efeito abaixo).
+const SEEN_KEY = "wb:birthday-balloons-v2";
 
 type Balloon = {
   id: number;
@@ -42,16 +43,20 @@ export function BirthdayBalloons({ oncePerDay = false }: { oncePerDay?: boolean 
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    if (oncePerDay) {
-      const today = new Date().toDateString();
-      try {
-        if (localStorage.getItem(SEEN_KEY) === today) return;
-        localStorage.setItem(SEEN_KEY, today);
-      } catch {
-        // Sem localStorage (aba anônima bloqueada): solta mesmo assim.
+    // O dia só é marcado quando os balões sobem de fato. Marcar antes fazia o
+    // React (que monta e desmonta uma vez a mais em dev) gastar o dia sem soltar nada.
+    const frame = requestAnimationFrame(() => {
+      if (oncePerDay) {
+        const today = new Date().toDateString();
+        try {
+          if (localStorage.getItem(SEEN_KEY) === today) return;
+          localStorage.setItem(SEEN_KEY, today);
+        } catch {
+          // Sem localStorage (aba anônima bloqueada): solta mesmo assim.
+        }
       }
-    }
-    const frame = requestAnimationFrame(() => setBalloons(launch()));
+      setBalloons(launch());
+    });
     const timer = window.setTimeout(() => setBalloons([]), 12_000);
     return () => {
       cancelAnimationFrame(frame);

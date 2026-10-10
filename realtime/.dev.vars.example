@@ -1,0 +1,3 @@
+# Segredo local para o wrangler dev (copie para .dev.vars). Use o mesmo valor de
+# REALTIME_SECRET no .env.local do Workboard. Gere com: openssl rand -base64 48
+REALTIME_SECRET=troque-por-um-segredo-com-pelo-menos-32-caracteres

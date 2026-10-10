@@ -65,6 +65,17 @@ export type SendMessageInput = z.input<typeof sendMessageSchema>;
 
 export const messageTargetSchema = z.object({ messageId: z.uuid("Mensagem inválida.") });
 
+/** Minha planilha: o trabalho arrastado e os vizinhos onde ele caiu (null = ponta da lista/coluna). */
+export const moveSheetJobSchema = z.object({
+  ownerId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
+  jobId,
+  beforeId: z.uuid().nullable(),
+  afterId: z.uuid().nullable(),
+  /** Quadro: status da coluna em que o trabalho foi solto. */
+  statusId: z.uuid().optional(),
+});
+export type MoveSheetJobInput = z.input<typeof moveSheetJobSchema>;
+
 // Status (admins)
 
 const hexColor = z.string().regex(/^#[0-9a-f]{6}$/i, "Use uma cor no formato #rrggbb.");

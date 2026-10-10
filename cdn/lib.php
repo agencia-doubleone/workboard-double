@@ -1,5 +1,5 @@
 <?php
-// Funções compartilhadas por upload.php e delete.php. Não é acessado direto
+// Funções compartilhadas por upload.php, delete.php e list.php. Não é acessado direto
 // (o .htaccess bloqueia).
 //
 // Compatível com PHP 5.4+, porque o subdomínio roda PHP 5. Não use

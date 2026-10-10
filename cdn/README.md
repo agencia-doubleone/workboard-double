@@ -6,7 +6,8 @@ Recebe os uploads do Workboard e serve os arquivos em `https://cdn.doubleone.com
 | --- | --- |
 | `upload.php` | Recebe o arquivo com o token assinado e devolve um recibo assinado |
 | `delete.php` | Apaga um arquivo; só o servidor do Workboard chama |
-| `lib.php` | Assinatura, validações e CORS (bloqueado para a web) |
+| `list.php` | Lista o que está em `uploads/` para a tela de Arquivos (admins) achar arquivos sem registro e links quebrados; só o servidor do Workboard chama |
+| `lib.php` | Assinatura, validações e CORS (bloqueado para a web); usado pelos três `.php` acima |
 | `config.example.php` | Modelo do `config.php` (secret e origens permitidas) |
 | `.htaccess` | Bloqueia `lib.php`, `config.php` e a listagem da pasta; desliga rewrites herdados do `www/` |
 | `uploads/.htaccess` | Arquivos públicos por link, sem listagem, sem executar scripts, com cache longo |
@@ -22,11 +23,12 @@ Recebe os uploads do Workboard e serve os arquivos em `https://cdn.doubleone.com
 4. Confira se a pasta `uploads/` aceita escrita pelo PHP (permissão 755 costuma bastar).
 5. No painel, confira: extensão `fileinfo` ativa e, se o `.user.ini` não valer, `upload_max_filesize = 512M` e `post_max_size = 520M`.
 6. No `.env.local` e na Vercel, defina `MEDIA_CDN_URL=https://cdn.doubleone.com.br` e `MEDIA_SIGNING_SECRET`.
-7. Rode `npm run cdn:check` no Workboard. Ele envia uma imagem de teste, confere recibo, CORS e proteções, e apaga o arquivo no fim.
+7. Rode `npm run cdn:check` no Workboard. Ele envia uma imagem de teste, confere recibo, listagem (`list.php`), CORS e proteções, e apaga o arquivo no fim.
 
 ## Ao mudar algo
 
 - **Versão do PHP:** o subdomínio roda PHP 5, e o código precisa continuar compatível com PHP 5.4+ (sem `??`, `declare(strict_types)`, tipos escalares ou de retorno nas funções, nem arrays em `const`). Não há PHP local: depois de mudar, rode `npm run cdn:check`. Um erro de sintaxe aparece como `Parse error` no corpo da resposta.
 - **Tipos aceitos:** `MEDIA_TYPES` em `src/lib/media.ts` **e** `media_extensions()` em `lib.php`.
 - **Formato do token:** `src/server/media/token.ts` e `lib.php`, juntos.
+- **Atualizar arquivos no servidor:** envie pelo FTP só os `.php` que mudaram (o `config.php` de lá continua igual) e rode `npm run cdn:check`. O `list.php` foi o último a entrar: sem ele, a tela de Arquivos mostra só o que está registrado no Workboard e avisa que falta o arquivo.
 - **Trocar o secret:** mude no `config.php` e nas variáveis do Workboard ao mesmo tempo. Envios em andamento falham e precisam ser refeitos.

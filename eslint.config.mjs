@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Worker do tempo real: tem as próprias dependências e o typecheck (cd realtime && npm run typecheck).
+    "realtime/**",
   ]),
 ]);
 

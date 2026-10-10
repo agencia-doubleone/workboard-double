@@ -21,11 +21,15 @@ import {
   listJobMessages,
   listJobStatuses,
   listJobStatusHistory,
+  listMentionableIds,
   listTeamMembers,
 } from "@/server/jobs";
 import { isMediaConfigured, resolveMediaUrl } from "@/server/media";
+import { listJobWhiteboards } from "@/server/whiteboards";
+import { JobWhiteboards } from "../../quadros/job-whiteboards";
+import { toCardView, toPersonView as toBoardPersonView } from "../../quadros/present";
 import { ActiveSwitch, StatusTimeline } from "../job-widgets";
-import { parsePit, toMessageView, toPersonView, toStatusOption } from "../present";
+import { canSeeJob, parsePit, toMessageView, toPersonView, toStatusOption } from "../present";
 import { StatusSelect } from "../status-select";
 import { JobActions } from "./job-actions";
 import { JobMessages } from "./job-messages";
@@ -45,16 +49,21 @@ async function JobContent({ params }: { params: PageProps<"/trabalhos/[pit]">["p
   const isAdmin = user.role === "admin";
   const pit = parsePit((await params).pit);
   const found = pit ? await findJobByPit(db, pit) : null;
-  if (!found) notFound();
+  // Quem não é admin só vê os trabalhos em que está vinculado; os outros "não existem".
+  if (!found || !canSeeJob(found, user)) notFound();
   const { job, client, status, assignees } = found;
 
-  const [statuses, history, messages, team, lastReadAt] = await Promise.all([
+  const [statuses, history, messages, mentionableIds, lastReadAt, boards, team] = await Promise.all([
     listJobStatuses(db),
     listJobStatusHistory(db, job.id),
     listJobMessages(db, job.id),
-    listTeamMembers(db),
+    listMentionableIds(db, job.id),
     getJobLastRead(db, job.id, user.id),
+    listJobWhiteboards(db, job.id, { id: user.id, isAdmin }),
+    listTeamMembers(db),
   ]);
+  // Só dá para @mencionar os funcionários ativos do trabalho.
+  const mentionable = assignees.filter((person) => mentionableIds.includes(person.id));
   // Nomes de quem foi mencionado (mesmo desativado) e de quem cadastrou.
   const names = await findUserNames(db, [
     ...messages.flatMap((message) => extractMentions(message.body)),
@@ -66,12 +75,13 @@ async function JobContent({ params }: { params: PageProps<"/trabalhos/[pit]">["p
 
   return (
     <div className="flex flex-col gap-6">
+      {/* A lista geral é só dos admins; a equipe volta para a própria planilha. */}
       <Link
-        href="/trabalhos"
+        href={isAdmin ? "/trabalhos" : "/minha-planilha"}
         className="flex w-fit items-center gap-1.5 text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:underline"
       >
         <ArrowLeftIcon className="size-4" />
-        Trabalhos
+        {isAdmin ? "Trabalhos" : "Minha planilha"}
       </Link>
 
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -133,7 +143,7 @@ async function JobContent({ params }: { params: PageProps<"/trabalhos/[pit]">["p
             <JobMessages
               jobId={job.id}
               messages={messages.map((message) => toMessageView(message, { viewerId: user.id, isAdmin, names, now }))}
-              people={team.map(toPersonView)}
+              people={mentionable.map(toPersonView)}
               viewerId={user.id}
               lastReadAt={lastReadAt?.toISOString() ?? null}
               uploadsEnabled={isMediaConfigured()}
@@ -206,6 +216,12 @@ async function JobContent({ params }: { params: PageProps<"/trabalhos/[pit]">["p
               </dl>
             </CardContent>
           </Card>
+
+          <JobWhiteboards
+            boards={boards.map((board) => toCardView(board, now))}
+            job={{ id: job.id, pit: job.pit, name: job.name }}
+            people={team.filter((person) => person.id !== user.id).map(toBoardPersonView)}
+          />
 
           <Card>
             <CardHeader>

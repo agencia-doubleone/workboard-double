@@ -6,6 +6,7 @@ import { Suspense } from "react";
 
 import { DoubleOneLogo } from "@/components/double-one-logo";
 import { Hint } from "@/components/hint";
+import { useRealtime } from "@/components/realtime/realtime-store";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { isActivePath, NAV_SECTIONS, type NavItem, type NavSectionId } from "./nav-config";
@@ -29,7 +30,7 @@ export function AppSidebar(props: AppSidebarProps) {
     <>
       <aside
         data-slot="app-sidebar"
-        className="hidden h-svh w-(--sidebar-width) shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-(--ease-snappy) motion-reduce:transition-none md:flex sidebar-collapsed:w-(--sidebar-width-icon)"
+        className="hidden h-svh w-(--sidebar-width) shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-(--ease-snappy) motion-reduce:transition-none md:flex sidebar-collapsed:w-(--sidebar-width-icon) print:hidden!"
       >
         <SidebarBody {...props} />
       </aside>
@@ -131,6 +132,29 @@ function ActiveNavLink({ item }: { item: NavItem }) {
   return <NavLinkAnchor item={item} active={isActivePath(pathname, item.href)} />;
 }
 
+/** Número de não lidas do item; com a sidebar recolhida, vira um ponto sobre o ícone. */
+function NavBadge({ kind }: { kind: NonNullable<NavItem["badge"]> }) {
+  const value = useRealtime((state) => state.counts?.[kind] ?? 0);
+  if (value === 0) return null;
+  return (
+    <>
+      <span
+        className={cn(
+          "ml-auto flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground tabular-nums",
+          sidebarFadeClass,
+        )}
+      >
+        {value > 99 ? "99+" : value}
+        <span className="sr-only"> com mensagens novas</span>
+      </span>
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute top-1 left-5 size-2 rounded-full bg-primary opacity-0 ring-2 ring-sidebar transition-opacity sidebar-collapsed:opacity-100"
+      />
+    </>
+  );
+}
+
 function NavLinkAnchor({ item, active }: { item: NavItem; active: boolean }) {
   const { collapsed, onNavigate } = useSidebarSurface();
   const Icon = item.icon;
@@ -142,10 +166,11 @@ function NavLinkAnchor({ item, active }: { item: NavItem; active: boolean }) {
           href={item.href}
           onClick={onNavigate}
           aria-current={active ? "page" : undefined}
-          className="group/nav-item flex h-8 items-center gap-2.5 overflow-hidden rounded-md px-2 text-[13px] font-medium text-sidebar-foreground/70 outline-none transition-colors hover:bg-sidebar-accent/70 hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring/50 aria-[current=page]:bg-sidebar-accent aria-[current=page]:text-sidebar-foreground"
+          className="group/nav-item relative flex h-8 items-center gap-2.5 overflow-hidden rounded-md px-2 text-[13px] font-medium text-sidebar-foreground/70 outline-none transition-colors hover:bg-sidebar-accent/70 hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring/50 aria-[current=page]:bg-(--nav-active) aria-[current=page]:text-primary-ink aria-[current=page]:hover:bg-(--nav-active) [--nav-active:color-mix(in_oklab,var(--primary)_14%,var(--sidebar))]"
         >
-          <Icon className="size-4 shrink-0 text-muted-foreground transition-colors group-hover/nav-item:text-sidebar-foreground group-aria-[current=page]/nav-item:text-primary" />
+          <Icon className="size-4 shrink-0 text-muted-foreground transition-colors group-hover/nav-item:text-sidebar-foreground group-aria-[current=page]/nav-item:text-primary-ink" />
           <span className={cn("truncate", sidebarFadeClass)}>{item.title}</span>
+          {item.badge && <NavBadge kind={item.badge} />}
         </Link>
       </Hint>
     </>

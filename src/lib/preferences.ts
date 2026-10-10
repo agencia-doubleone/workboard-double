@@ -20,18 +20,26 @@ export type Preferences = {
   mode: ThemeMode;
   accent: Accent;
   sidebarCollapsed: boolean;
+  /** Som ao chegar notificação ou mensagem do chat. */
+  sound: boolean;
+  /** Confetes e som de conquista ao concluir um trabalho. */
+  celebrate: boolean;
 };
 
 export const DEFAULT_PREFERENCES: Preferences = {
   mode: "system",
   accent: DEFAULT_ACCENT,
   sidebarCollapsed: false,
+  sound: true,
+  celebrate: true,
 };
 
 export const STORAGE_KEYS = {
   mode: "wb:theme-mode",
   accent: "wb:accent",
   sidebar: "wb:sidebar",
+  sound: "wb:sound",
+  celebrate: "wb:celebrate",
 } as const;
 
 /**

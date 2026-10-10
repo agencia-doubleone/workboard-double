@@ -7,6 +7,8 @@ export const AUDIT_CATEGORIES = {
   users: "Usuários",
   clients: "Clientes",
   jobs: "Trabalhos",
+  planning: "Planejamentos",
+  whiteboards: "Quadros",
   media: "Arquivos",
 } as const;
 export type AuditCategory = keyof typeof AUDIT_CATEGORIES;
@@ -55,6 +57,15 @@ export const AUDIT_ACTIONS = {
   "job_status.deleted": { label: "Status de trabalho excluído", category: "jobs", tone: "danger" },
   "job_status.default_changed": { label: "Status padrão alterado", category: "jobs" },
   "job_status.reordered": { label: "Ordem dos status alterada", category: "jobs" },
+  "planning.created": { label: "Planejamento criado", category: "planning" },
+  "planning.updated": { label: "Planejamento editado", category: "planning" },
+  "planning.deleted": { label: "Planejamento excluído", category: "planning", tone: "danger" },
+  "planning.month_status_changed": { label: "Status do mês do planejamento alterado", category: "planning" },
+  "planning.imported": { label: "Posts importados do documento", category: "planning" },
+  "planning.posts_deleted": { label: "Posts do planejamento excluídos", category: "planning", tone: "warning" },
+  "whiteboard.created": { label: "Quadro criado", category: "whiteboards" },
+  "whiteboard.updated": { label: "Quadro editado", category: "whiteboards" },
+  "whiteboard.deleted": { label: "Quadro excluído", category: "whiteboards", tone: "danger" },
   "media.uploaded": { label: "Arquivo enviado", category: "media" },
   "media.deleted": { label: "Arquivo excluído", category: "media", tone: "danger" },
 } as const satisfies Record<string, AuditActionDefinition>;
@@ -66,6 +77,8 @@ export const AUDIT_ENTITY_TYPES = {
   client: "Cliente",
   job: "Trabalho",
   job_status: "Status de trabalho",
+  planning: "Planejamento",
+  whiteboard: "Quadro",
   media: "Arquivo",
 } as const;
 export type AuditEntityType = keyof typeof AUDIT_ENTITY_TYPES;
@@ -119,6 +132,14 @@ export const AUDIT_FIELD_LABELS: Record<string, string> = {
   textColor: "Cor do texto",
   backgroundColor: "Cor do fundo",
   isFinal: "Encerra o trabalho",
+  networks: "Redes",
+  postsPerMonth: "Posts por mês",
+  members: "Responsáveis",
+  overview: "Informações gerais",
+  title: "Título",
+  access: "Acesso",
+  job: "Trabalho",
+  whiteboardMembers: "Pessoas",
 };
 
 /** Formato padrão de alterações: { campo: { from, to } }. */

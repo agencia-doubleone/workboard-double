@@ -1,11 +1,8 @@
-import { formatCalendarDate, formatDate, formatDateTime } from "@/lib/format";
+import { formatCalendarDate, formatDate, formatDateTime, formatMessageTime, formatTime } from "@/lib/format";
 import { isOverdue, splitMentions } from "@/lib/jobs";
-import { formatBytes } from "@/lib/media";
 import type { JobListItem, JobMessageItem, JobPerson, JobRecord, JobStatusRecord } from "@/server/jobs";
-import { getMediaUrl, resolveMediaUrl } from "@/server/media";
+import { resolveMediaUrl, toAttachmentView } from "@/server/media";
 import type { JobFormValues, JobMessageView, JobPersonView, JobRow, JobStatusOption } from "./types";
-
-const timeFormat = new Intl.DateTimeFormat("pt-BR", { timeStyle: "short", timeZone: "America/Sao_Paulo" });
 
 export function toPersonView(person: JobPerson): JobPersonView {
   return { id: person.id, name: person.name, imageUrl: resolveMediaUrl(person.image) };
@@ -39,7 +36,7 @@ export function toJobRow(item: JobListItem, today: string): JobRow {
     assignees: item.assignees.map(toPersonView),
     createdAt: {
       date: formatDate(item.createdAt),
-      time: timeFormat.format(item.createdAt),
+      time: formatTime(item.createdAt),
       absolute: formatDateTime(item.createdAt),
     },
     dueDate: item.dueDate ? { label: shortCalendarDate(item.dueDate, today), full: formatCalendarDate(item.dueDate) } : null,
@@ -66,26 +63,19 @@ export function toFormValues({ job, assignees }: JobWithAssignees): JobFormValue
   };
 }
 
+/**
+ * Admin vê qualquer trabalho; o resto da equipe, só os em que está entre os
+ * funcionários. Mesma regra de canAccessJob (actions), com os funcionários já carregados.
+ */
+export function canSeeJob(found: { assignees: { id: string }[] }, viewer: { id: string; role?: string | null }) {
+  return viewer.role === "admin" || found.assignees.some((person) => person.id === viewer.id);
+}
+
 /** PIT da URL (/trabalhos/2559): só dígitos, senão null (a página dá 404). */
 export function parsePit(value: string) {
   if (!/^\d{1,9}$/.test(value)) return null;
   const pit = Number(value);
   return pit >= 1 ? pit : null;
-}
-
-const TIME_ZONE = "America/Sao_Paulo";
-const dayKey = new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" });
-const shortDate = new Intl.DateTimeFormat("pt-BR", { timeZone: TIME_ZONE, day: "2-digit", month: "2-digit" });
-const fullDate = new Intl.DateTimeFormat("pt-BR", { timeZone: TIME_ZONE, dateStyle: "short" });
-
-/** "hoje, 14:32", "ontem, 09:10", "08/10, 14:32" (ou com ano, se de outro ano). */
-export function formatMessageTime(date: Date, now: Date) {
-  const time = timeFormat.format(date);
-  const day = dayKey.format(date);
-  if (day === dayKey.format(now)) return `hoje, ${time}`;
-  if (day === dayKey.format(new Date(now.getTime() - 86_400_000))) return `ontem, ${time}`;
-  const sameYear = day.slice(0, 4) === dayKey.format(now).slice(0, 4);
-  return `${sameYear ? shortDate.format(date) : fullDate.format(date)}, ${time}`;
 }
 
 export function toMessageView(
@@ -102,13 +92,7 @@ export function toMessageView(
     ),
     createdAt: message.createdAt.toISOString(),
     time: { label: formatMessageTime(message.createdAt, ctx.now), absolute: formatDateTime(message.createdAt) },
-    attachments: message.attachments.map((file) => ({
-      id: file.id,
-      url: getMediaUrl(file.key),
-      name: file.name,
-      size: formatBytes(file.size),
-      isImage: file.type.startsWith("image/") && file.type !== "image/vnd.adobe.photoshop",
-    })),
+    attachments: message.attachments.map(toAttachmentView),
     canDelete: message.authorId === ctx.viewerId || ctx.isAdmin,
   };
 }

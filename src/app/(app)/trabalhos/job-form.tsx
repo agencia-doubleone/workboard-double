@@ -7,6 +7,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { celebrate, isCompletion } from "@/components/celebration";
 import { ClientLogo } from "@/components/client-logo";
 import { DatePicker } from "@/components/date-picker";
 import { JobStatusBadge } from "@/components/job-status-badge";
@@ -103,6 +104,9 @@ export function JobForm({ initial, statuses, clients, people, uploadsEnabled }: 
         return;
       }
       toast.success(result.message);
+      // Editou e mudou para um status que encerra: trabalho concluído.
+      const before = statuses.find((status) => status.id === initial.statusId);
+      if (editing && isCompletion(before, selectedStatus)) celebrate();
       router.push(`/trabalhos/${result.pit ?? initial.pit}`);
     });
   }

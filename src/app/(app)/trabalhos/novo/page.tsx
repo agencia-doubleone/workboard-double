@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { PageHeader } from "@/components/shell/page-header";
 import { PageSkeleton } from "@/components/shell/page-skeleton";
 import { db } from "@/db";
-import { requireSession } from "@/lib/session";
+import { requireAdmin } from "@/lib/session";
 import { findDefaultJobStatus, listClientOptions, listJobStatuses, listTeamMembers } from "@/server/jobs";
 import { isMediaConfigured, resolveMediaUrl } from "@/server/media";
 import { JobForm } from "../job-form";
@@ -12,6 +12,7 @@ import { toPersonView, toStatusOption } from "../present";
 
 export const metadata: Metadata = { title: "Novo trabalho" };
 
+// Só admins cadastram (o título fica dentro do Suspense, antes do notFound()).
 export default function NovoTrabalhoPage() {
   return (
     <Suspense fallback={<PageSkeleton />}>
@@ -21,7 +22,7 @@ export default function NovoTrabalhoPage() {
 }
 
 async function NewJobContent() {
-  await requireSession();
+  await requireAdmin();
   const [statuses, defaultStatus, clients, people] = await Promise.all([
     listJobStatuses(db),
     findDefaultJobStatus(db),

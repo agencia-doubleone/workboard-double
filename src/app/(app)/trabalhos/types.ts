@@ -1,5 +1,7 @@
 // Formas serializáveis que as páginas de trabalhos entregam aos client components.
 
+import type { AttachmentView } from "@/lib/media";
+
 export type JobPersonView = { id: string; name: string; imageUrl: string | null };
 
 export type JobStatusOption = {
@@ -41,13 +43,7 @@ export type JobFormValues = {
 
 export type ClientOption = { id: string; name: string; logoUrl: string | null };
 
-export type MessageAttachmentView = {
-  id: string;
-  url: string;
-  name: string;
-  size: string;
-  isImage: boolean;
-};
+export type MessageAttachmentView = AttachmentView;
 
 /** Trecho de uma mensagem: texto ou menção já com o nome. */
 export type MessagePartView = { type: "text"; text: string } | { type: "mention"; userId: string; name: string };

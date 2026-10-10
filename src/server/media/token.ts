@@ -11,7 +11,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 export const MEDIA_TOKEN_VERSION = 1;
 
-export type MediaTokenPurpose = "upload" | "receipt" | "delete";
+export type MediaTokenPurpose = "upload" | "receipt" | "delete" | "list";
 
 function hmac(purpose: MediaTokenPurpose, body: string, secret: string) {
   return createHmac("sha256", secret).update(`${purpose}.${body}`).digest();

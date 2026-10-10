@@ -1,5 +1,6 @@
 // Verifica o CDN de ponta a ponta (npm run cdn:check): envia imagens de
-// 1 pixel (PNG e WebP) com um token assinado, confere o recibo, as proteções e apaga.
+// 1 pixel (PNG e WebP) com um token assinado, confere o recibo, a listagem
+// (list.php), as proteções e apaga.
 // Não usa o banco nem o navegador; só MEDIA_CDN_URL e MEDIA_SIGNING_SECRET.
 
 import { env } from "@/env";
@@ -64,6 +65,12 @@ async function main() {
       method: "POST",
       body: new URLSearchParams({ token: signMediaToken("delete", { key, exp: seconds() + 60 }, secret) }),
     });
+  const list = (token = signMediaToken("list", { exp: seconds() + 60 }, secret)) =>
+    fetch(`${base}/list.php`, { method: "POST", body: new URLSearchParams({ token }) });
+  const listedKeys = async () => {
+    const body = await readJson(await list());
+    return Array.isArray(body.files) ? body.files.map((item: { key?: unknown }) => item.key) : null;
+  };
 
   // Proteções do servidor
   const listing = await fetch(`${base}/uploads/`);
@@ -124,6 +131,26 @@ async function main() {
   );
   await remove(webpKey);
 
+  // Listagem (tela de Arquivos do Workboard)
+  const listResponse = await list();
+  if (listResponse.status === 404) {
+    check(false, "list.php lista os arquivos", "o list.php ainda não foi enviado para o servidor (veja cdn/README.md)");
+  } else {
+    const listBody = await readJson(listResponse);
+    const keys = Array.isArray(listBody.files) ? listBody.files.map((item: { key?: unknown }) => item.key) : [];
+    check(
+      listResponse.status === 200 && listBody.ok === true && keys.includes(key),
+      "list.php lista os arquivos (inclusive o de teste)",
+      listResponse.status === 200 ? `${keys.length} arquivos, sem o de teste` : listBody,
+    );
+    const forgedList = await list(signMediaToken("list", { exp: seconds() + 60 }, `${secret}-errado`));
+    check(forgedList.status === 401, "list.php recusa token de outro segredo", await readJson(forgedList));
+    const expiredList = await list(signMediaToken("list", { exp: seconds() - 10 }, secret));
+    check(expiredList.status === 401, "list.php recusa token vencido", await readJson(expiredList));
+    const deleteTokenOnList = await list(signMediaToken("delete", { key, exp: seconds() + 60 }, secret));
+    check(deleteTokenOnList.status === 401, "list.php não aceita token de outra finalidade", await readJson(deleteTokenOnList));
+  }
+
   // Tentativas que precisam falhar
   const replay = await upload(token);
   check(replay.status === 409, "o mesmo token não serve para um segundo envio", await readJson(replay));
@@ -144,6 +171,10 @@ async function main() {
 
   const gone = await fetch(`${base}/uploads/${key}`);
   check(gone.status === 404, "arquivo apagado some da URL pública", `status ${gone.status}`);
+  if (listResponse.status !== 404) {
+    const after = await listedKeys();
+    check(after !== null && !after.includes(key), "arquivo apagado some da listagem", after === null ? "lista inválida" : undefined);
+  }
 
   if (failures > 0) {
     console.log(`\n✖ ${failures} verificação(ões) falharam. Arquivo de teste: uploads/${key}`);

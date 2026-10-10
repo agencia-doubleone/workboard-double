@@ -22,10 +22,18 @@ const dateTime = new Intl.DateTimeFormat("pt-BR", {
   timeZone: "America/Sao_Paulo",
 });
 
-/** Avatares dos funcionários (até `max`, depois "+N"); com uma pessoa só, mostra o nome. */
-export function AssigneeAvatars({ people, max = 3 }: { people: JobPersonView[]; max?: number }) {
+/** Avatares dos funcionários (até `max`, depois "+N"); com uma pessoa só, mostra o nome (a não ser com showName={false}). */
+export function AssigneeAvatars({
+  people,
+  max = 3,
+  showName = true,
+}: {
+  people: JobPersonView[];
+  max?: number;
+  showName?: boolean;
+}) {
   if (people.length === 0) return <span className="text-muted-foreground">—</span>;
-  if (people.length === 1) {
+  if (people.length === 1 && showName) {
     const [person] = people;
     return (
       <span className="flex min-w-0 items-center gap-2">

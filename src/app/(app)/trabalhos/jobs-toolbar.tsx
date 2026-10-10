@@ -1,6 +1,14 @@
 "use client";
 
-import { ChevronLeftIcon, ChevronRightIcon, Loader2Icon, SearchIcon, UserIcon } from "lucide-react";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  KanbanIcon,
+  ListIcon,
+  Loader2Icon,
+  SearchIcon,
+  UserIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
@@ -12,33 +20,44 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserAvatar } from "@/components/user-avatar";
-import { JOB_PAGE_SIZES, JOB_SITUATIONS, type JobSituation } from "@/lib/jobs";
+import { JOB_PAGE_SIZES, JOB_SITUATIONS, SHEET_VIEWS, type JobSituation, type SheetView } from "@/lib/jobs";
 import { cn } from "@/lib/utils";
-import { jobListHref, MY_JOBS, type JobListParams } from "./params";
+import { jobListHref, MY_JOBS, type JobListParams, type JobListPath } from "./params";
 import type { ClientOption, JobPersonView, JobStatusOption } from "./types";
 
 const ALL = "all";
 
-function useJobListNavigation(params: JobListParams) {
+function useJobListNavigation(params: JobListParams, path: JobListPath) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   // Qualquer mudança de filtro volta para a primeira página.
   function navigate(next: Partial<JobListParams>) {
-    const href = jobListHref({ ...params, pagina: 1, ...next });
+    const href = jobListHref({ ...params, pagina: 1, ...next }, path);
     startTransition(() => router.replace(href, { scroll: false }));
   }
   return { isPending, navigate };
 }
 
 type JobsToolbarProps = {
+  /** Lista a que os filtros pertencem. */
+  path: JobListPath;
   params: JobListParams;
   statuses: JobStatusOption[];
   clients: ClientOption[];
-  people: JobPersonView[];
+  /** Equipe para o filtro de funcionário (só na lista geral; sem isso, o filtro some). */
+  people?: JobPersonView[];
+  /** Minha planilha: visão atual, com o botão de alternar entre lista e quadro. */
+  view?: SheetView;
 };
 
-export function JobsToolbar({ params, statuses, clients, people }: JobsToolbarProps) {
-  const { isPending, navigate } = useJobListNavigation(params);
+const VIEW_ICONS = { lista: ListIcon, quadro: KanbanIcon } as const;
+
+/** Botões em segmento (situação, visão): mesmo visual nos dois. */
+const segmentClass =
+  "flex h-8 items-center gap-1.5 rounded-[calc(var(--radius)-2px)] px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 aria-selected:bg-background aria-selected:text-foreground aria-selected:shadow-control dark:aria-selected:bg-input/50 [&_svg]:size-4";
+
+export function JobsToolbar({ path, params, statuses, clients, people, view }: JobsToolbarProps) {
+  const { isPending, navigate } = useJobListNavigation(params, path);
   const [query, setQuery] = useState(params.busca ?? "");
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -64,7 +83,7 @@ export function JobsToolbar({ params, statuses, clients, people }: JobsToolbarPr
         </span>
       ),
     },
-    ...people.map((person) => ({
+    ...(people ?? []).map((person) => ({
       value: person.id,
       label: person.name,
       icon: <UserAvatar name={person.name} imageUrl={person.imageUrl} className="size-5 text-[9px]" />,
@@ -83,13 +102,33 @@ export function JobsToolbar({ params, statuses, clients, people }: JobsToolbarPr
               role="tab"
               aria-selected={params.situacao === value}
               onClick={() => navigate({ situacao: value })}
-              className="flex h-8 items-center rounded-[calc(var(--radius)-2px)] px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 aria-selected:bg-background aria-selected:text-foreground aria-selected:shadow-control dark:aria-selected:bg-input/50"
+              className={segmentClass}
             >
               {label}
             </button>
           ))}
         </div>
         {isPending && <Loader2Icon className="size-4 animate-spin text-muted-foreground" aria-label="Carregando" />}
+        {view && (
+          <div role="tablist" aria-label="Visualização" className="ml-auto flex w-fit gap-1 rounded-md border bg-muted/40 p-0.5">
+            {(Object.entries(SHEET_VIEWS) as [SheetView, string][]).map(([value, label]) => {
+              const Icon = VIEW_ICONS[value];
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  aria-selected={view === value}
+                  onClick={() => navigate({ visao: value === "quadro" ? "quadro" : undefined })}
+                  className={segmentClass}
+                >
+                  <Icon />
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
@@ -134,16 +173,18 @@ export function JobsToolbar({ params, statuses, clients, people }: JobsToolbarPr
           className="sm:w-56"
         />
 
-        <SearchablePicker
-          options={personOptions}
-          value={params.funcionario ?? null}
-          onChange={(value) => navigate({ funcionario: value ?? undefined })}
-          placeholder="Todos os funcionários"
-          searchPlaceholder="Buscar pessoa..."
-          emptyText="Ninguém encontrado."
-          clearable
-          className="sm:w-56"
-        />
+        {people && (
+          <SearchablePicker
+            options={personOptions}
+            value={params.funcionario ?? null}
+            onChange={(value) => navigate({ funcionario: value ?? undefined })}
+            placeholder="Todos os funcionários"
+            searchPlaceholder="Buscar pessoa..."
+            emptyText="Ninguém encontrado."
+            clearable
+            className="sm:w-56"
+          />
+        )}
 
         {hasFilters && (
           <Button
@@ -163,14 +204,15 @@ export function JobsToolbar({ params, statuses, clients, people }: JobsToolbarPr
 }
 
 type JobsPaginationProps = {
+  path: JobListPath;
   params: JobListParams;
   total: number;
   pageCount: number;
 };
 
 /** Contagem, tamanho da página e navegação entre páginas. */
-export function JobsPagination({ params, total, pageCount }: JobsPaginationProps) {
-  const { navigate } = useJobListNavigation(params);
+export function JobsPagination({ path, params, total, pageCount }: JobsPaginationProps) {
+  const { navigate } = useJobListNavigation(params, path);
   const page = Math.min(params.pagina, pageCount);
   const from = total === 0 ? 0 : (page - 1) * params.porPagina + 1;
   const to = Math.min(page * params.porPagina, total);
@@ -200,13 +242,13 @@ export function JobsPagination({ params, total, pageCount }: JobsPaginationProps
         </Select>
         {pageCount > 1 && (
           <div className="flex items-center gap-1">
-            <PageLink href={jobListHref({ ...params, pagina: page - 1 })} disabled={page <= 1} label="Página anterior">
+            <PageLink href={jobListHref({ ...params, pagina: page - 1 }, path)} disabled={page <= 1} label="Página anterior">
               <ChevronLeftIcon />
             </PageLink>
             <span className="px-2 tabular-nums">
               {page} / {pageCount}
             </span>
-            <PageLink href={jobListHref({ ...params, pagina: page + 1 })} disabled={page >= pageCount} label="Próxima página">
+            <PageLink href={jobListHref({ ...params, pagina: page + 1 }, path)} disabled={page >= pageCount} label="Próxima página">
               <ChevronRightIcon />
             </PageLink>
           </div>

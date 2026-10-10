@@ -2,7 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { refresh } from "next/cache";
 import { headers } from "next/headers";
 import { z } from "zod";
@@ -10,23 +10,26 @@ import { z } from "zod";
 import { db } from "@/db";
 import { job, jobAssignee, jobMessage, jobMessageAttachment, jobStatusHistory, user } from "@/db/schema";
 import type { AuditChanges } from "@/lib/audit";
-import { extractMentions } from "@/lib/jobs";
+import { extractMentions, positionBetween } from "@/lib/jobs";
 import { getSession } from "@/lib/session";
 import {
   createJobSchema,
   jobTargetSchema,
   messageTargetSchema,
+  moveSheetJobSchema,
   sendMessageSchema,
   setJobActiveSchema,
   setJobStatusSchema,
   updateJobSchema,
   type CreateJobInput,
+  type MoveSheetJobInput,
   type SendMessageInput,
   type UpdateJobInput,
 } from "@/lib/validations/jobs";
 import { getRequestMeta, recordAudit } from "@/server/audit";
 import { findClientById } from "@/server/clients";
 import {
+  canAccessJob,
   filterActiveUserIds,
   findJobById,
   findJobStatusById,
@@ -34,14 +37,23 @@ import {
   listAssignees,
   listJobAttachmentKeys,
   listJobStatusHistory,
+  listMentionableIds,
+  listSheetPositions,
   markJobRead as markRead,
+  renumberSheet,
   type JobStatusRecord,
 } from "@/server/jobs";
 import { deleteMedia, deleteMediaByKey, findMediaById } from "@/server/media";
+import { markJobNotificationsRead } from "@/server/notifications";
+import { notifyAssignments, notifyJobMessage, notifyStatusChange } from "@/server/notify";
+import { publishRealtimeAfter } from "@/server/realtime";
 import { richTextExcerpt, sanitizeRichText } from "@/server/rich-text";
 
-// Toda a equipe cadastra, edita, muda status e conversa; só admins excluem
-// trabalhos. Toda mudança vai para a auditoria (mensagens não: são conversa).
+// Só admins cadastram e excluem trabalhos. Editar, mudar status, ativar e
+// conversar: admins em qualquer trabalho, o resto da equipe só nos trabalhos em
+// que está vinculada (para os outros, o trabalho "não existe"). Toda mudança vai
+// para a auditoria (mensagens não: são conversa). Entrar ou sair do trabalho,
+// trocar o status e mandar mensagem notificam os funcionários (src/server/notify.ts).
 
 export type JobActionResult =
   | { ok: true; message: string; pit?: number }
@@ -61,6 +73,16 @@ async function getTeamContext() {
     isAdmin: session.user.role === "admin",
     meta: getRequestMeta(requestHeaders),
   };
+}
+
+type TeamContext = NonNullable<Awaited<ReturnType<typeof getTeamContext>>>;
+
+/** O trabalho, se quem chama pode acessá-lo; senão null (tratado como não encontrado). */
+async function findAccessibleJob(ctx: TeamContext, jobId: string) {
+  const found = await findJobById(db, jobId);
+  if (!found) return null;
+  const allowed = await canAccessJob(db, { jobId: found.id, userId: ctx.actor.id, isAdmin: ctx.isAdmin });
+  return allowed ? found : null;
 }
 
 function invalid(error: z.ZodError): JobActionResult {
@@ -93,6 +115,7 @@ async function resolveClient(clientId: string, currentClientId?: string) {
 export async function createJob(input: CreateJobInput): Promise<JobActionResult> {
   const ctx = await getTeamContext();
   if (!ctx) return UNAUTHENTICATED;
+  if (!ctx.isAdmin) return FORBIDDEN;
 
   const parsed = createJobSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
@@ -133,6 +156,7 @@ export async function createJob(input: CreateJobInput): Promise<JobActionResult>
       metadata: { client: targetClient.name, status: status.name, assignees: assigneeIds.length },
       ...ctx.meta,
     });
+    notifyAssignments({ job: created, actor: ctx.actor, addedIds: assigneeIds, removedIds: [] });
     return { ok: true, message: `Trabalho #${created.pit} cadastrado.`, pit: created.pit };
   } catch (error) {
     console.error(error);
@@ -147,8 +171,16 @@ export async function updateJob(input: UpdateJobInput): Promise<JobActionResult>
   const parsed = updateJobSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
   const data = parsed.data;
-  const current = await findJobById(db, data.jobId);
+  const current = await findAccessibleJob(ctx, data.jobId);
   if (!current) return JOB_NOT_FOUND;
+  // Quem não é admin só vê os trabalhos em que está: sair da lista o tiraria do próprio trabalho.
+  if (!ctx.isAdmin && !data.assigneeIds.includes(ctx.actor.id)) {
+    return {
+      ok: false,
+      error: "Revise os campos destacados.",
+      fieldErrors: { assigneeIds: ["Você não pode se tirar do trabalho. Peça para um admin."] },
+    };
+  }
 
   const [targetClient, status, assigneeIds, currentAssignees, currentStatus, currentClient] = await Promise.all([
     resolveClient(data.clientId, current.clientId),
@@ -173,11 +205,14 @@ export async function updateJob(input: UpdateJobInput): Promise<JobActionResult>
   const before = currentAssignees.map((person) => person.id).sort();
   const after = [...assigneeIds].sort();
   const assigneesChanged = before.join() !== after.join();
+  // Só sai quem saiu e só entra quem entrou: quem continua mantém a posição na própria planilha.
+  const removedIds = before.filter((id) => !after.includes(id));
+  const addedIds = after.filter((id) => !before.includes(id));
   if (assigneesChanged) {
-    const added = after.length
+    const people = after.length
       ? await db.select({ name: user.name }).from(user).where(inArray(user.id, after))
       : [];
-    changes.assignees = { from: currentAssignees.map((person) => person.name), to: added.map((person) => person.name) };
+    changes.assignees = { from: currentAssignees.map((person) => person.name), to: people.map((person) => person.name) };
   }
   const statusChanged = status.id !== current.statusId;
   if (statusChanged) changes.status = { from: currentStatus?.name ?? null, to: status.name };
@@ -198,9 +233,11 @@ export async function updateJob(input: UpdateJobInput): Promise<JobActionResult>
         })
         .where(eq(job.id, current.id)),
       ...(statusChanged ? [db.insert(jobStatusHistory).values(historyEntry(current.id, status, ctx.actor))] : []),
-      ...(assigneesChanged ? [db.delete(jobAssignee).where(eq(jobAssignee.jobId, current.id))] : []),
-      ...(assigneesChanged && assigneeIds.length
-        ? [db.insert(jobAssignee).values(assigneeIds.map((userId) => ({ jobId: current.id, userId })))]
+      ...(removedIds.length
+        ? [db.delete(jobAssignee).where(and(eq(jobAssignee.jobId, current.id), inArray(jobAssignee.userId, removedIds)))]
+        : []),
+      ...(addedIds.length
+        ? [db.insert(jobAssignee).values(addedIds.map((userId) => ({ jobId: current.id, userId })))]
         : []),
     ]);
   } catch (error) {
@@ -214,6 +251,10 @@ export async function updateJob(input: UpdateJobInput): Promise<JobActionResult>
     metadata: { changes },
     ...ctx.meta,
   });
+  const updated = { id: current.id, pit: current.pit, name: data.name };
+  notifyAssignments({ job: updated, actor: ctx.actor, addedIds, removedIds });
+  // Quem acabou de entrar já recebe "incluiu você", com o trabalho no status novo.
+  if (statusChanged) notifyStatusChange({ job: updated, actor: ctx.actor, status, skipIds: addedIds });
 
   refresh();
   return { ok: true, message: `Trabalho #${current.pit} atualizado.`, pit: current.pit };
@@ -227,18 +268,35 @@ export async function setJobStatus(input: { jobId: string; statusId: string }): 
   const parsed = setJobStatusSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Status inválido." };
   const [current, status] = await Promise.all([
-    findJobById(db, parsed.data.jobId),
+    findAccessibleJob(ctx, parsed.data.jobId),
     findJobStatusById(db, parsed.data.statusId),
   ]);
   if (!current) return JOB_NOT_FOUND;
   if (!status) return { ok: false, error: "Status inválido." };
   if (status.id === current.statusId) return { ok: true, message: "O trabalho já está nesse status." };
-  const previous = await findJobStatusById(db, current.statusId);
 
-  await db.batch([
-    db.update(job).set({ statusId: status.id, statusChangedAt: new Date() }).where(eq(job.id, current.id)),
-    db.insert(jobStatusHistory).values(historyEntry(current.id, status, ctx.actor)),
-  ]);
+  await db.batch(statusChangeQueries(current.id, status, ctx.actor));
+  await auditStatusChange(ctx, current, status);
+  notifyStatusChange({ job: current, actor: ctx.actor, status });
+
+  refresh();
+  return { ok: true, message: `#${current.pit}: ${status.name}.` };
+}
+
+/** Escritas de uma troca de status: o trabalho e o histórico (vão no mesmo lote de quem chama). */
+function statusChangeQueries(jobId: string, status: JobStatusRecord, actor: { id: string; name: string }) {
+  return [
+    db.update(job).set({ statusId: status.id, statusChangedAt: new Date() }).where(eq(job.id, jobId)),
+    db.insert(jobStatusHistory).values(historyEntry(jobId, status, actor)),
+  ] as const;
+}
+
+async function auditStatusChange(
+  ctx: TeamContext,
+  current: { id: string; pit: number; name: string; statusId: string },
+  status: JobStatusRecord,
+) {
+  const previous = await findJobStatusById(db, current.statusId);
   await recordAudit({
     action: "job.status_changed",
     actor: ctx.actor,
@@ -246,9 +304,61 @@ export async function setJobStatus(input: { jobId: string; statusId: string }): 
     metadata: { changes: { status: { from: previous?.name ?? null, to: status.name } } },
     ...ctx.meta,
   });
+}
+
+/**
+ * Minha planilha: arrasta um trabalho para entre dois vizinhos (lista ou coluna
+ * do quadro). No quadro, soltar em outra coluna também troca o status. Só quem
+ * é dono da planilha ou um admin reorganiza; trocar o status segue a regra de acesso.
+ */
+export async function moveSheetJob(input: MoveSheetJobInput): Promise<JobActionResult> {
+  const ctx = await getTeamContext();
+  if (!ctx) return UNAUTHENTICATED;
+
+  const parsed = moveSheetJobSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Movimento inválido." };
+  const { ownerId, jobId, beforeId, afterId, statusId } = parsed.data;
+  if (ownerId !== ctx.actor.id && !ctx.isAdmin) return FORBIDDEN;
+
+  const [current, status] = await Promise.all([
+    findAccessibleJob(ctx, jobId),
+    statusId ? findJobStatusById(db, statusId) : null,
+  ]);
+  if (!current) return JOB_NOT_FOUND;
+  if (statusId && !status) return { ok: false, error: "Status inválido." };
+  const newStatus = status && status.id !== current.statusId ? status : null;
+
+  const neighbors = [beforeId, afterId].filter((id): id is string => Boolean(id));
+  let positions = await listSheetPositions(db, ownerId, [jobId, ...neighbors]);
+  if (!positions.has(jobId)) return { ok: false, error: "Esse trabalho não está nessa planilha." };
+  // Vizinho que saiu da planilha nesse meio-tempo é ignorado.
+  let position = positionBetween(beforeId ? positions.get(beforeId) : undefined, afterId ? positions.get(afterId) : undefined);
+  if (position === null) {
+    await renumberSheet(db, ownerId);
+    positions = await listSheetPositions(db, ownerId, neighbors);
+    position = positionBetween(beforeId ? positions.get(beforeId) : undefined, afterId ? positions.get(afterId) : undefined);
+  }
+
+  const moveQuery =
+    typeof position === "number"
+      ? [
+          db
+            .update(jobAssignee)
+            .set({ position })
+            .where(and(eq(jobAssignee.jobId, jobId), eq(jobAssignee.userId, ownerId))),
+        ]
+      : [];
+  const queries = [...(newStatus ? statusChangeQueries(current.id, newStatus, ctx.actor) : []), ...moveQuery];
+  if (queries.length === 0) return { ok: true, message: "" };
+  const [first, ...rest] = queries;
+  await db.batch([first, ...rest]);
+  if (newStatus) {
+    await auditStatusChange(ctx, current, newStatus);
+    notifyStatusChange({ job: current, actor: ctx.actor, status: newStatus });
+  }
 
   refresh();
-  return { ok: true, message: `#${current.pit}: ${status.name}.` };
+  return { ok: true, message: newStatus ? `#${current.pit}: ${newStatus.name}.` : "" };
 }
 
 export async function setJobActive(input: { jobId: string; active: boolean }): Promise<JobActionResult> {
@@ -257,7 +367,7 @@ export async function setJobActive(input: { jobId: string; active: boolean }): P
 
   const parsed = setJobActiveSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Trabalho inválido." };
-  const current = await findJobById(db, parsed.data.jobId);
+  const current = await findAccessibleJob(ctx, parsed.data.jobId);
   if (!current) return JOB_NOT_FOUND;
   const { active } = parsed.data;
   if (current.active === active) return { ok: true, message: active ? "O trabalho já estava ativo." : "O trabalho já estava inativo." };
@@ -285,8 +395,13 @@ export async function deleteJob(input: { jobId: string }): Promise<JobActionResu
   const current = await findJobById(db, parsed.data.jobId);
   if (!current) return JOB_NOT_FOUND;
 
-  const attachmentKeys = await listJobAttachmentKeys(db, current.id);
+  const [attachmentKeys, assigneeIds] = await Promise.all([
+    listJobAttachmentKeys(db, current.id),
+    listMentionableIds(db, current.id),
+  ]);
   await db.delete(job).where(eq(job.id, current.id));
+  // As notificações do trabalho saíram junto: o sino de quem estava nele reconta.
+  publishRealtimeAfter(assigneeIds, { type: "notifications.read" });
   for (const key of attachmentKeys) {
     await deleteMediaByKey(db, key, { actor: ctx.actor, meta: ctx.meta, audit: false });
   }
@@ -311,7 +426,7 @@ export async function sendMessage(input: SendMessageInput): Promise<JobActionRes
   const parsed = sendMessageSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
   const { jobId, body, attachmentIds } = parsed.data;
-  const current = await findJobById(db, jobId);
+  const current = await findAccessibleJob(ctx, jobId);
   if (!current) return JOB_NOT_FOUND;
 
   // Anexos: arquivos que a própria pessoa enviou para a pasta "trabalhos".
@@ -319,8 +434,9 @@ export async function sendMessage(input: SendMessageInput): Promise<JobActionRes
   if (files.some((file) => !file || file.uploadedById !== ctx.actor.id || file.folder !== "trabalhos")) {
     return { ok: false, error: "Um dos anexos é inválido. Envie de novo." };
   }
-  // Menções só de pessoas ativas; as outras viram texto comum.
-  const mentions = await filterActiveUserIds(db, extractMentions(body));
+  // Menções só de funcionários ativos do trabalho; as outras não contam como menção.
+  const mentionable = new Set(await listMentionableIds(db, current.id));
+  const mentions = extractMentions(body).filter((userId) => mentionable.has(userId));
 
   const messageId = randomUUID();
   await db.batch([
@@ -337,6 +453,7 @@ export async function sendMessage(input: SendMessageInput): Promise<JobActionRes
       : []),
   ]);
   await markRead(db, current.id, ctx.actor.id);
+  notifyJobMessage({ job: current, actor: ctx.actor, body, attachmentCount: attachmentIds.length, mentionIds: mentions });
 
   refresh();
   return { ok: true, message: "Mensagem enviada." };
@@ -350,9 +467,9 @@ export async function deleteMessage(input: { messageId: string }): Promise<JobAc
   const parsed = messageTargetSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Mensagem inválida." };
   const [found] = await db.select().from(jobMessage).where(eq(jobMessage.id, parsed.data.messageId)).limit(1);
-  if (!found) return { ok: false, error: "Mensagem não encontrada." };
+  const current = found ? await findAccessibleJob(ctx, found.jobId) : null;
+  if (!found || !current) return { ok: false, error: "Mensagem não encontrada." };
   if (found.authorId !== ctx.actor.id && !ctx.isAdmin) return FORBIDDEN;
-  const current = await findJobById(db, found.jobId);
 
   const attachments = await db
     .select({ mediaId: jobMessageAttachment.mediaId })
@@ -363,15 +480,13 @@ export async function deleteMessage(input: { messageId: string }): Promise<JobAc
     const file = await findMediaById(db, mediaId);
     if (file) await deleteMediaByKey(db, file.key, { actor: ctx.actor, meta: ctx.meta, audit: false });
   }
-  if (current) {
-    await recordAudit({
-      action: "job.message_deleted",
-      actor: ctx.actor,
-      entity: jobEntity(current),
-      metadata: { author: found.authorName, attachments: attachments.length },
-      ...ctx.meta,
-    });
-  }
+  await recordAudit({
+    action: "job.message_deleted",
+    actor: ctx.actor,
+    entity: jobEntity(current),
+    metadata: { author: found.authorName, attachments: attachments.length },
+    ...ctx.meta,
+  });
 
   refresh();
   return { ok: true, message: "Mensagem excluída." };
@@ -393,13 +508,20 @@ export async function discardAttachment(input: { mediaId: string }): Promise<Job
   return result.ok ? { ok: true, message: "Anexo removido." } : { ok: false, error: result.error };
 }
 
-/** Zera as não lidas de quem está vendo o trabalho. */
+/** Zera as não lidas de quem está vendo o trabalho, inclusive as notificações dele no sino. */
 export async function markJobRead(input: { jobId: string }) {
   const ctx = await getTeamContext();
   if (!ctx) return;
   const parsed = jobTargetSchema.safeParse(input);
   if (!parsed.success) return;
-  await markRead(db, parsed.data.jobId, ctx.actor.id);
+  const current = await findAccessibleJob(ctx, parsed.data.jobId);
+  if (!current) return;
+  const [, cleared] = await Promise.all([
+    markRead(db, current.id, ctx.actor.id),
+    markJobNotificationsRead(db, ctx.actor.id, current.id),
+  ]);
+  // O sino das outras abas (e o desta) reconta.
+  if (cleared > 0) publishRealtimeAfter([ctx.actor.id], { type: "notifications.read" });
 }
 
 // Leituras sob demanda (modal do briefing e histórico na lista)
@@ -409,11 +531,7 @@ export async function getJobBriefing(input: { jobId: string }) {
   if (!ctx) return null;
   const parsed = jobTargetSchema.safeParse(input);
   if (!parsed.success) return null;
-  const [found] = await db
-    .select({ briefing: job.briefing })
-    .from(job)
-    .where(eq(job.id, parsed.data.jobId))
-    .limit(1);
+  const found = await findAccessibleJob(ctx, parsed.data.jobId);
   return found ? { html: found.briefing } : null;
 }
 
@@ -422,7 +540,9 @@ export async function getJobStatusHistory(input: { jobId: string }) {
   if (!ctx) return null;
   const parsed = jobTargetSchema.safeParse(input);
   if (!parsed.success) return null;
-  const rows = await listJobStatusHistory(db, parsed.data.jobId);
+  const current = await findAccessibleJob(ctx, parsed.data.jobId);
+  if (!current) return null;
+  const rows = await listJobStatusHistory(db, current.id);
   return rows.map((row) => ({
     id: row.id,
     statusName: row.statusName,

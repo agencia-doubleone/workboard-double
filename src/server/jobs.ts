@@ -66,6 +66,8 @@ export type JobListFilters = {
   statusId?: string;
   clientId?: string;
   assigneeId?: string;
+  /** "sheet": na ordem da planilha de `assigneeId` (Minha planilha). Padrão: PIT mais novo primeiro. */
+  order?: "pit" | "sheet";
   search?: string;
   page?: number;
   pageSize?: number;
@@ -93,6 +95,13 @@ export async function listJobs(database: Database, filters: JobListFilters) {
     conditions.push(/^\d{1,9}$/.test(search) ? or(byText, eq(job.pit, Number(search)))! : byText);
   }
   const where = conditions.length ? and(...conditions) : undefined;
+  const sheetOwner = filters.order === "sheet" ? filters.assigneeId : undefined;
+  const orderBy = sheetOwner
+    ? [
+        asc(sql`(select ${jobAssignee.position} from ${jobAssignee} where ${jobAssignee.jobId} = ${job.id} and ${jobAssignee.userId} = ${sheetOwner})`),
+        desc(job.pit),
+      ]
+    : [desc(job.pit)];
 
   // Mensagens por trabalho: total, não lidas por quem vê e se alguma não lida o menciona.
   const viewer = filters.viewerId;
@@ -140,7 +149,7 @@ export async function listJobs(database: Database, filters: JobListFilters) {
       .innerJoin(jobStatus, eq(jobStatus.id, job.statusId))
       .leftJoin(messages, eq(messages.jobId, job.id))
       .where(where)
-      .orderBy(desc(job.pit))
+      .orderBy(...orderBy)
       .limit(pageSize)
       .offset((page - 1) * pageSize),
     database
@@ -204,6 +213,35 @@ export async function findJobById(database: Database, id: string) {
   return found ?? null;
 }
 
+// Acesso: admins veem todos os trabalhos; o resto da equipe, só aqueles em que
+// está entre os funcionários (página, edição, status, briefing e mensagens).
+
+export async function isJobAssignee(database: Database, jobId: string, userId: string) {
+  const [found] = await database
+    .select({ userId: jobAssignee.userId })
+    .from(jobAssignee)
+    .where(and(eq(jobAssignee.jobId, jobId), eq(jobAssignee.userId, userId)))
+    .limit(1);
+  return Boolean(found);
+}
+
+export async function canAccessJob(
+  database: Database,
+  { jobId, userId, isAdmin }: { jobId: string; userId: string; isAdmin: boolean },
+) {
+  return isAdmin || isJobAssignee(database, jobId, userId);
+}
+
+/** Quem pode ser @mencionado nas mensagens do trabalho: os funcionários ativos dele. */
+export async function listMentionableIds(database: Database, jobId: string) {
+  const rows = await database
+    .select({ id: jobAssignee.userId })
+    .from(jobAssignee)
+    .innerJoin(user, eq(user.id, jobAssignee.userId))
+    .where(and(eq(jobAssignee.jobId, jobId), or(isNull(user.banned), eq(user.banned, false))));
+  return rows.map((row) => row.id);
+}
+
 export async function listJobStatusHistory(database: Database, jobId: string) {
   return database
     .select()
@@ -258,6 +296,30 @@ export async function listJobAttachmentKeys(database: Database, jobId: string) {
     .innerJoin(media, eq(media.id, jobMessageAttachment.mediaId))
     .where(eq(jobMessage.jobId, jobId));
   return rows.map((row) => row.key);
+}
+
+// Ordem da Minha planilha (job_assignee.position)
+
+/** Posição de cada trabalho na planilha da pessoa (só os que estão nela). */
+export async function listSheetPositions(database: Database, userId: string, jobIds: string[]) {
+  if (jobIds.length === 0) return new Map<string, number>();
+  const rows = await database
+    .select({ jobId: jobAssignee.jobId, position: jobAssignee.position })
+    .from(jobAssignee)
+    .where(and(eq(jobAssignee.userId, userId), inArray(jobAssignee.jobId, jobIds)));
+  return new Map(rows.map((row) => [row.jobId, row.position]));
+}
+
+/** Renumera a planilha da pessoa (1, 2, 3...) mantendo a ordem, quando falta espaço entre dois trabalhos. */
+export async function renumberSheet(database: Database, userId: string) {
+  await database.execute(sql`
+    update ${jobAssignee} set position = ranked.rank
+    from (
+      select job_id, row_number() over (order by position, job_id) as rank
+      from ${jobAssignee} where user_id = ${userId}
+    ) as ranked
+    where ${jobAssignee.userId} = ${userId} and ${jobAssignee.jobId} = ranked.job_id
+  `);
 }
 
 /** Marca como lidas as mensagens do trabalho para essa pessoa (até agora). */

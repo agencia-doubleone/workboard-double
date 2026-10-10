@@ -1,11 +1,15 @@
 "use client";
 
+import { closestCenter, DndContext, type DragEndEvent } from "@dnd-kit/core";
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   AtSignIcon,
   BriefcaseIcon,
   CircleOffIcon,
   CirclePlayIcon,
   ExternalLinkIcon,
+  GripVerticalIcon,
   MessageSquareIcon,
   MoreHorizontalIcon,
   PencilIcon,
@@ -14,7 +18,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { ClientLogo } from "@/components/client-logo";
@@ -45,9 +49,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { setJobActive } from "./actions";
+import { moveSheetJob, setJobActive } from "./actions";
 import { DeleteJobDialog } from "./delete-job-dialog";
 import { AssigneeAvatars, BriefingButton, StatusHistoryButton } from "./job-widgets";
+import { sheetAccessibility, useSheetSensors, verticalOnly } from "./sheet-dnd";
 import { StatusSelect } from "./status-select";
 import type { JobRow, JobStatusOption } from "./types";
 
@@ -57,14 +62,26 @@ type JobsTableProps = {
   isAdmin: boolean;
   /** Há busca ou filtro aplicado (muda o texto do estado vazio). */
   filtered: boolean;
+  /** Estado vazio sem filtros; o padrão (lista geral) convida a cadastrar. */
+  emptyMessage?: { title: string; description: string };
+  /** Minha planilha: as linhas viram arrastáveis e reorganizam a planilha dessa pessoa. */
+  sheetOwnerId?: string;
 };
 
-export function JobsTable({ rows, statuses, isAdmin, filtered }: JobsTableProps) {
-  const router = useRouter();
+export function JobsTable({ rows, statuses, isAdmin, filtered, emptyMessage, sheetOwnerId }: JobsTableProps) {
+  const dndId = useId();
+  const sensors = useSheetSensors();
   // Trabalho do dialog de excluir; o open separado mantém o texto durante a animação de saída.
   const [deleteTarget, setDeleteTarget] = useState<JobRow | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [, startTransition] = useTransition();
+  // Ordem na tela: muda na hora ao soltar e volta à do servidor quando ela chega.
+  const [items, setItems] = useState(rows);
+  const [serverRows, setServerRows] = useState(rows);
+  if (rows !== serverRows) {
+    setServerRows(rows);
+    setItems(rows);
+  }
 
   function toggleActive(row: JobRow) {
     startTransition(async () => {
@@ -74,144 +91,95 @@ export function JobsTable({ rows, statuses, isAdmin, filtered }: JobsTableProps)
     });
   }
 
-  if (rows.length === 0) return <EmptyState filtered={filtered} />;
+  function handleDragEnd({ active, over }: DragEndEvent) {
+    if (!sheetOwnerId || !over || active.id === over.id) return;
+    const from = items.findIndex((row) => row.id === active.id);
+    const to = items.findIndex((row) => row.id === over.id);
+    if (from < 0 || to < 0) return;
+    const next = arrayMove(items, from, to);
+    setItems(next);
+    startTransition(async () => {
+      const result = await moveSheetJob({
+        ownerId: sheetOwnerId,
+        jobId: next[to].id,
+        beforeId: next[to - 1]?.id ?? null,
+        afterId: next[to + 1]?.id ?? null,
+      });
+      if (!result.ok) {
+        toast.error(result.error);
+        setItems(rows);
+      }
+    });
+  }
+
+  if (items.length === 0) return <EmptyState filtered={filtered} message={emptyMessage} />;
+
+  const sortable = Boolean(sheetOwnerId);
+  const rowProps = {
+    statuses,
+    isAdmin,
+    onToggleActive: toggleActive,
+    onDelete: (row: JobRow) => {
+      setDeleteTarget(row);
+      setDeleteOpen(true);
+    },
+  };
+
+  const table = (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {sortable && (
+            <TableHead className="w-8 pr-0">
+              <span className="sr-only">Ordem</span>
+            </TableHead>
+          )}
+          <TableHead className="w-16">PIT</TableHead>
+          <TableHead className="hidden 2xl:table-cell">Lançamento</TableHead>
+          <TableHead className="hidden sm:table-cell">Cliente</TableHead>
+          <TableHead>Trabalho</TableHead>
+          <TableHead className="hidden lg:table-cell">Funcionários</TableHead>
+          <TableHead>Status</TableHead>
+          <TableHead className="hidden sm:table-cell">Entrega</TableHead>
+          <TableHead className="hidden px-2 text-center md:table-cell">Briefing</TableHead>
+          <TableHead className="px-2 text-center">Mensagens</TableHead>
+          <TableHead className="hidden px-2 text-center min-[90rem]:table-cell">Histórico</TableHead>
+          <TableHead className="w-12">
+            <span className="sr-only">Ações</span>
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {items.map((row) =>
+          sortable ? (
+            <SortableJobRow key={row.id} row={row} {...rowProps} />
+          ) : (
+            <JobTableRow key={row.id} row={row} {...rowProps} />
+          ),
+        )}
+      </TableBody>
+    </Table>
+  );
 
   return (
     <>
       <TableFrame>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-16">PIT</TableHead>
-              <TableHead className="hidden 2xl:table-cell">Lançamento</TableHead>
-              <TableHead className="hidden sm:table-cell">Cliente</TableHead>
-              <TableHead>Trabalho</TableHead>
-              <TableHead className="hidden lg:table-cell">Funcionários</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="hidden sm:table-cell">Entrega</TableHead>
-              <TableHead className="hidden px-2 text-center md:table-cell">Briefing</TableHead>
-              <TableHead className="px-2 text-center">Mensagens</TableHead>
-              <TableHead className="hidden px-2 text-center min-[90rem]:table-cell">Histórico</TableHead>
-              <TableHead className="w-12">
-                <span className="sr-only">Ações</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row) => {
-              const href = `/trabalhos/${row.pit}`;
-              return (
-                <TableRow
-                  key={row.id}
-                  className={cn("cursor-pointer", !row.active && "text-muted-foreground")}
-                  onClick={() => router.push(href)}
-                >
-                  <TableCell className="font-medium tabular-nums">
-                    <Link
-                      href={href}
-                      onClick={(event) => event.stopPropagation()}
-                      className="outline-none hover:underline focus-visible:underline"
-                    >
-                      {row.pit}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="hidden text-muted-foreground tabular-nums 2xl:table-cell">
-                    <Hint label={row.createdAt.absolute}>
-                      <span>{row.createdAt.date}</span>
-                    </Hint>
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    <span className="flex max-w-32 min-w-0 items-center gap-2 2xl:max-w-44">
-                      <ClientLogo name={row.client.name} logoUrl={row.client.logoUrl} className="size-6 text-[9px]" />
-                      <span className="truncate">{row.client.name}</span>
-                    </span>
-                  </TableCell>
-                  <TableCell className="max-w-80 min-w-36 whitespace-normal">
-                    <Link
-                      href={href}
-                      onClick={(event) => event.stopPropagation()}
-                      className={cn(
-                        "line-clamp-2 font-medium outline-none hover:underline focus-visible:underline",
-                        row.active ? "text-foreground" : "text-muted-foreground",
-                      )}
-                    >
-                      {row.name}
-                    </Link>
-                    {!row.active && (
-                      <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-                        <CircleOffIcon className="size-3" />
-                        Inativo
-                      </span>
-                    )}
-                    <span className="block truncate text-xs text-muted-foreground sm:hidden">{row.client.name}</span>
-                  </TableCell>
-                  <TableCell className="hidden max-w-48 lg:table-cell">
-                    <AssigneeAvatars people={row.assignees} />
-                  </TableCell>
-                  <TableCell className="py-1.5" onClick={(event) => event.stopPropagation()}>
-                    <StatusSelect jobId={row.id} value={row.statusId} statuses={statuses} compact />
-                  </TableCell>
-                  <TableCell className="hidden tabular-nums sm:table-cell">
-                    {row.dueDate ? (
-                      <Hint label={row.overdue ? `Atrasado: entrega em ${row.dueDate.full}` : row.dueDate.full}>
-                        <span className={cn(row.overdue && "font-medium text-destructive-ink")}>{row.dueDate.label}</span>
-                      </Hint>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="hidden px-2 py-1.5 text-center md:table-cell">
-                    <BriefingButton jobId={row.id} title={`#${row.pit} ${row.name}`} hasBriefing={row.hasBriefing} />
-                  </TableCell>
-                  <TableCell className="px-2 py-1.5 text-center">
-                    <MessagesLink href={`${href}#mensagens`} messages={row.messages} />
-                  </TableCell>
-                  <TableCell className="hidden px-2 py-1.5 text-center min-[90rem]:table-cell">
-                    <StatusHistoryButton jobId={row.id} />
-                  </TableCell>
-                  <TableCell className="py-1.5 text-right" onClick={(event) => event.stopPropagation()}>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={<Button variant="ghost" size="icon-sm" aria-label={`Ações de #${row.pit}`} />}
-                      >
-                        <MoreHorizontalIcon />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-44">
-                        <DropdownMenuItem render={<Link href={href} />}>
-                          <ExternalLinkIcon />
-                          Abrir
-                        </DropdownMenuItem>
-                        <DropdownMenuItem render={<Link href={`${href}/editar`} />}>
-                          <PencilIcon />
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => toggleActive(row)}>
-                          {row.active ? <CircleOffIcon /> : <CirclePlayIcon />}
-                          {row.active ? "Desativar" : "Ativar"}
-                        </DropdownMenuItem>
-                        {isAdmin && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={() => {
-                                setDeleteTarget(row);
-                                setDeleteOpen(true);
-                              }}
-                            >
-                              <Trash2Icon />
-                              Excluir
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+        {sortable ? (
+          <DndContext
+            id={dndId}
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={[verticalOnly]}
+            onDragEnd={handleDragEnd}
+            accessibility={sheetAccessibility((id) => `#${items.find((row) => row.id === id)?.pit ?? ""}`)}
+          >
+            <SortableContext items={items.map((row) => row.id)} strategy={verticalListSortingStrategy}>
+              {table}
+            </SortableContext>
+          </DndContext>
+        ) : (
+          table
+        )}
       </TableFrame>
 
       {deleteTarget && <DeleteJobDialog open={deleteOpen} onOpenChange={setDeleteOpen} job={deleteTarget} />}
@@ -219,8 +187,170 @@ export function JobsTable({ rows, statuses, isAdmin, filtered }: JobsTableProps)
   );
 }
 
+type JobTableRowProps = {
+  row: JobRow;
+  statuses: JobStatusOption[];
+  isAdmin: boolean;
+  onToggleActive: (row: JobRow) => void;
+  onDelete: (row: JobRow) => void;
+  /** Linha arrastável: ref, posição durante o arraste e a alça na primeira coluna. */
+  sortable?: {
+    ref: (node: HTMLElement | null) => void;
+    style: React.CSSProperties;
+    dragging: boolean;
+    handle: React.ReactNode;
+  };
+};
+
+/** Linha arrastável da Minha planilha: a alça (⋮⋮) move; o resto da linha continua abrindo o trabalho. */
+function SortableJobRow(props: Omit<JobTableRowProps, "sortable">) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    id: props.row.id,
+  });
+  return (
+    <JobTableRow
+      {...props}
+      sortable={{
+        ref: setNodeRef,
+        style: { transform: CSS.Translate.toString(transform), transition },
+        dragging: isDragging,
+        handle: (
+          <button
+            ref={setActivatorNodeRef}
+            type="button"
+            {...attributes}
+            {...listeners}
+            aria-label={`Mover #${props.row.pit}`}
+            onClick={(event) => event.stopPropagation()}
+            className="flex size-7 cursor-grab items-center justify-center rounded-md text-muted-foreground/60 outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 active:cursor-grabbing"
+          >
+            <GripVerticalIcon className="size-4" />
+          </button>
+        ),
+      }}
+    />
+  );
+}
+
+function JobTableRow({ row, statuses, isAdmin, onToggleActive, onDelete, sortable }: JobTableRowProps) {
+  const router = useRouter();
+  const href = `/trabalhos/${row.pit}`;
+
+  return (
+    <TableRow
+      ref={sortable?.ref}
+      style={sortable?.style}
+      className={cn(
+        "cursor-pointer",
+        !row.active && "text-muted-foreground",
+        sortable?.dragging && "relative z-10 bg-card shadow-overlay hover:bg-card",
+      )}
+      onClick={() => router.push(href)}
+    >
+      {sortable && <TableCell className="w-8 py-1.5 pr-0">{sortable.handle}</TableCell>}
+      <TableCell className="font-medium tabular-nums">
+        <Link
+          href={href}
+          onClick={(event) => event.stopPropagation()}
+          className="outline-none hover:underline focus-visible:underline"
+        >
+          {row.pit}
+        </Link>
+      </TableCell>
+      <TableCell className="hidden text-muted-foreground tabular-nums 2xl:table-cell">
+        <Hint label={row.createdAt.absolute}>
+          <span>{row.createdAt.date}</span>
+        </Hint>
+      </TableCell>
+      <TableCell className="hidden sm:table-cell">
+        <span className="flex max-w-32 min-w-0 items-center gap-2 2xl:max-w-44">
+          <ClientLogo name={row.client.name} logoUrl={row.client.logoUrl} className="size-6 text-[9px]" />
+          <span className="truncate">{row.client.name}</span>
+        </span>
+      </TableCell>
+      <TableCell className="max-w-80 min-w-36 whitespace-normal">
+        <Link
+          href={href}
+          onClick={(event) => event.stopPropagation()}
+          className={cn(
+            "line-clamp-2 font-medium outline-none hover:underline focus-visible:underline",
+            row.active ? "text-foreground" : "text-muted-foreground",
+          )}
+        >
+          {row.name}
+        </Link>
+        {!row.active && (
+          <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+            <CircleOffIcon className="size-3" />
+            Inativo
+          </span>
+        )}
+        <span className="block truncate text-xs text-muted-foreground sm:hidden">{row.client.name}</span>
+      </TableCell>
+      <TableCell className="hidden max-w-48 lg:table-cell">
+        <AssigneeAvatars people={row.assignees} />
+      </TableCell>
+      <TableCell className="py-1.5" onClick={(event) => event.stopPropagation()}>
+        <StatusSelect jobId={row.id} value={row.statusId} statuses={statuses} compact />
+      </TableCell>
+      <TableCell className="hidden tabular-nums sm:table-cell">
+        <DueDate dueDate={row.dueDate} overdue={row.overdue} />
+      </TableCell>
+      <TableCell className="hidden px-2 py-1.5 text-center md:table-cell">
+        <BriefingButton jobId={row.id} title={`#${row.pit} ${row.name}`} hasBriefing={row.hasBriefing} />
+      </TableCell>
+      <TableCell className="px-2 py-1.5 text-center">
+        <MessagesLink href={`${href}#mensagens`} messages={row.messages} />
+      </TableCell>
+      <TableCell className="hidden px-2 py-1.5 text-center min-[90rem]:table-cell">
+        <StatusHistoryButton jobId={row.id} />
+      </TableCell>
+      <TableCell className="py-1.5 text-right" onClick={(event) => event.stopPropagation()}>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Ações de #${row.pit}`} />}>
+            <MoreHorizontalIcon />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem render={<Link href={href} />}>
+              <ExternalLinkIcon />
+              Abrir
+            </DropdownMenuItem>
+            <DropdownMenuItem render={<Link href={`${href}/editar`} />}>
+              <PencilIcon />
+              Editar
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onToggleActive(row)}>
+              {row.active ? <CircleOffIcon /> : <CirclePlayIcon />}
+              {row.active ? "Desativar" : "Ativar"}
+            </DropdownMenuItem>
+            {isAdmin && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onClick={() => onDelete(row)}>
+                  <Trash2Icon />
+                  Excluir
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+/** Entrega: "15/10" (em vermelho se atrasado), com a data completa na dica. */
+export function DueDate({ dueDate, overdue }: { dueDate: JobRow["dueDate"]; overdue: boolean }) {
+  if (!dueDate) return <span className="text-muted-foreground">—</span>;
+  return (
+    <Hint label={overdue ? `Atrasado: entrega em ${dueDate.full}` : dueDate.full}>
+      <span className={cn(overdue && "font-medium text-destructive-ink")}>{dueDate.label}</span>
+    </Hint>
+  );
+}
+
 /** Contador de mensagens: total, e as não lidas em destaque (com @ quando há menção). */
-function MessagesLink({ href, messages }: { href: string; messages: JobRow["messages"] }) {
+export function MessagesLink({ href, messages }: { href: string; messages: JobRow["messages"] }) {
   const { total, unread, mentioned } = messages;
   const label =
     total === 0
@@ -252,21 +382,21 @@ function MessagesLink({ href, messages }: { href: string; messages: JobRow["mess
   );
 }
 
-function EmptyState({ filtered }: { filtered: boolean }) {
+function EmptyState({ filtered, message }: { filtered: boolean; message?: { title: string; description: string } }) {
+  const title = filtered ? "Nenhum trabalho encontrado" : (message?.title ?? "Nenhum trabalho aqui");
+  const description = filtered
+    ? "Ajuste a busca ou os filtros para ver outros trabalhos."
+    : (message?.description ?? "Cadastre um trabalho para acompanhar status, entrega, briefing e a conversa da equipe.");
   return (
     <Empty className="border">
       <EmptyHeader>
         <EmptyMedia variant="icon">
           <BriefcaseIcon />
         </EmptyMedia>
-        <EmptyTitle>{filtered ? "Nenhum trabalho encontrado" : "Nenhum trabalho aqui"}</EmptyTitle>
-        <EmptyDescription>
-          {filtered
-            ? "Ajuste a busca ou os filtros para ver outros trabalhos."
-            : "Cadastre um trabalho para acompanhar status, entrega, briefing e a conversa da equipe."}
-        </EmptyDescription>
+        <EmptyTitle>{title}</EmptyTitle>
+        <EmptyDescription>{description}</EmptyDescription>
       </EmptyHeader>
-      {!filtered && (
+      {!filtered && !message && (
         <EmptyContent>
           <Link href="/trabalhos/novo" className={buttonVariants()}>
             <PlusIcon data-icon="inline-start" />

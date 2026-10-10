@@ -7,9 +7,12 @@ import type { Database } from "@/db";
 import { media } from "@/db/schema";
 import { env } from "@/env";
 import {
+  formatBytes,
   getMediaType,
+  isPreviewableImage,
   MEDIA_FOLDERS,
   MEDIA_NAME_MAX_LENGTH,
+  type AttachmentView,
   type MediaFolder,
   type MediaItem,
   type MediaUploadTicket,
@@ -24,12 +27,16 @@ import { signMediaToken, verifyMediaToken } from "./token";
 // 3. o PHP grava em uploads/{key} e devolve um recibo assinado;
 // 4. /api/media/complete: completeUpload confere o recibo, grava em `media` e audita.
 // Excluir é servidor para servidor: deleteMedia chama {MEDIA_CDN_URL}/delete.php.
+// A tela de Arquivos (admins) lista o que está de fato no CDN com list.php.
 
 /** O PHP só confere o token depois de receber o arquivo inteiro: cobre envios longos. */
 const UPLOAD_TICKET_TTL_SECONDS = 60 * 60;
 const RECEIPT_TTL_SECONDS = 60 * 60;
 const DELETE_TOKEN_TTL_SECONDS = 60;
+const LIST_TOKEN_TTL_SECONDS = 60;
 const CDN_TIMEOUT_MS = 15_000;
+/** Listar milhares de arquivos leva mais que um envio pequeno. */
+const LIST_TIMEOUT_MS = 30_000;
 const EXTERNAL_URL = /^https?:\/\//;
 
 type RequestMeta = ReturnType<typeof getRequestMeta>;
@@ -59,6 +66,17 @@ export function getMediaUrl(key: string) {
 export function resolveMediaUrl(value: string | null | undefined) {
   if (!value) return null;
   return EXTERNAL_URL.test(value) ? value : getMediaUrl(value);
+}
+
+/** Anexo de mensagem (linha de media) para o navegador. */
+export function toAttachmentView(file: { id: string; key: string; name: string; type: string; size: number }): AttachmentView {
+  return {
+    id: file.id,
+    url: getMediaUrl(file.key),
+    name: file.name,
+    size: formatBytes(file.size),
+    isImage: isPreviewableImage(file.type),
+  };
 }
 
 function nowInSeconds() {
@@ -218,6 +236,81 @@ export async function deleteMediaByKey(
   const result = await deleteMedia(database, { id: row.id, ...options });
   if (!result.ok) console.error("[media] arquivo não foi apagado", key, result.error);
   return result.ok;
+}
+
+/**
+ * Apaga do CDN um arquivo que não tem registro no banco (envio que não terminou,
+ * algo posto pelo FTP). Só admins chamam; quem tem registro sai por deleteMedia.
+ */
+export async function deleteUnregisteredMedia(
+  database: Database,
+  { key, actor, meta }: { key: string; actor: AuditActor; meta: RequestMeta },
+): Promise<MediaResult<{ name: string }>> {
+  if (!MEDIA_KEY_PATTERN.test(key)) return fail(400, "Caminho de arquivo inválido.");
+  if (await findMediaByKey(database, key)) {
+    return fail(409, "Este arquivo tem registro no Workboard: exclua pela linha dele.");
+  }
+  const removed = await deleteFromCdn(key);
+  if (!removed.ok) return removed;
+
+  const name = key.split("/").pop() ?? key;
+  await createAuditRecorder(database)({
+    action: "media.deleted",
+    actor,
+    entity: { type: "media", id: key, label: name },
+    metadata: { key, folder: key.split("/")[0], unregistered: true, removedFromCdn: removed.data.deleted },
+    ...meta,
+  });
+  return { ok: true, data: { name } };
+}
+
+const listingSchema = z.object({
+  ok: z.literal(true),
+  files: z.array(z.object({ key: z.string(), size: z.number().int().nonnegative(), mtime: z.number().int() })),
+  ignored: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+});
+
+export type CdnListing = {
+  files: { key: string; size: number; modifiedAt: Date }[];
+  /** Coisas em uploads/ fora do padrão do Workboard (não listadas). */
+  ignored: number;
+  /** A lista passou do teto do list.php e veio cortada. */
+  truncated: boolean;
+};
+
+/**
+ * O que está de fato em uploads/ no CDN (list.php). Falha com status 404 quando
+ * o list.php ainda não foi enviado para o servidor.
+ */
+export async function listCdnFiles(): Promise<MediaResult<CdnListing>> {
+  const { baseUrl, secret } = getConfig();
+  const token = signMediaToken("list", { exp: nowInSeconds() + LIST_TOKEN_TTL_SECONDS }, secret);
+  try {
+    const response = await fetch(`${baseUrl}/list.php`, {
+      method: "POST",
+      body: new URLSearchParams({ token }),
+      signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
+      cache: "no-store",
+    });
+    if (response.status === 404) return fail(404, "O list.php ainda não está no servidor de arquivos.");
+    const parsed = listingSchema.safeParse(await response.json().catch(() => null));
+    if (!response.ok || !parsed.success) {
+      console.error("[media] o CDN não devolveu a lista", response.status);
+      return fail(502, "O servidor de arquivos não devolveu a lista.");
+    }
+    return {
+      ok: true,
+      data: {
+        files: parsed.data.files.map((file) => ({ key: file.key, size: file.size, modifiedAt: new Date(file.mtime * 1000) })),
+        ignored: parsed.data.ignored,
+        truncated: parsed.data.truncated,
+      },
+    };
+  } catch (error) {
+    console.error("[media] falha ao listar o CDN", error);
+    return fail(502, "O servidor de arquivos não respondeu.");
+  }
 }
 
 async function deleteFromCdn(key: string): Promise<MediaResult<{ deleted: boolean }>> {

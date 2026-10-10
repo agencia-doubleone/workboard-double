@@ -30,6 +30,8 @@ function readStorage(): Preferences {
       mode: isThemeMode(mode) ? mode : DEFAULT_PREFERENCES.mode,
       accent: isAccent(accent) ? accent : DEFAULT_PREFERENCES.accent,
       sidebarCollapsed: localStorage.getItem(STORAGE_KEYS.sidebar) === "collapsed",
+      sound: localStorage.getItem(STORAGE_KEYS.sound) !== "off",
+      celebrate: localStorage.getItem(STORAGE_KEYS.celebrate) !== "off",
     };
   } catch {
     return DEFAULT_PREFERENCES;
@@ -44,6 +46,8 @@ function writeStorage(preferences: Preferences) {
       STORAGE_KEYS.sidebar,
       preferences.sidebarCollapsed ? "collapsed" : "expanded",
     );
+    localStorage.setItem(STORAGE_KEYS.sound, preferences.sound ? "on" : "off");
+    localStorage.setItem(STORAGE_KEYS.celebrate, preferences.celebrate ? "on" : "off");
   } catch {
     // Modo privado / storage bloqueado: a preferência vale só nesta aba.
   }
@@ -127,6 +131,11 @@ function commit(partial: Partial<Preferences>) {
   emit();
 }
 
+/** Para quem lê fora do React (ex.: o som dos avisos). */
+export function getPreferences() {
+  return getSnapshot();
+}
+
 export function usePreferences() {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
@@ -137,6 +146,14 @@ export function setThemeMode(mode: ThemeMode) {
 
 export function setAccent(accent: Accent) {
   commit({ accent });
+}
+
+export function setNotificationSound(sound: boolean) {
+  commit({ sound });
+}
+
+export function setCelebrate(celebrate: boolean) {
+  commit({ celebrate });
 }
 
 export function toggleSidebarCollapsed() {

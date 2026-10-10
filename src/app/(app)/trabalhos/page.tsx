@@ -9,7 +9,7 @@ import { PageSkeleton } from "@/components/shell/page-skeleton";
 import { buttonVariants } from "@/components/ui/button";
 import { db } from "@/db";
 import { DEFAULT_JOB_SITUATION, todayInSaoPaulo } from "@/lib/jobs";
-import { requireSession } from "@/lib/session";
+import { requireAdmin } from "@/lib/session";
 import { listClientOptions, listJobs, listJobStatuses, listTeamMembers } from "@/server/jobs";
 import { resolveMediaUrl } from "@/server/media";
 import { JobsPagination, JobsToolbar } from "./jobs-toolbar";
@@ -19,7 +19,8 @@ import { toJobRow, toPersonView, toStatusOption } from "./present";
 
 export const metadata: Metadata = { title: "Trabalhos" };
 
-// Toda a equipe vê, cadastra e edita trabalhos; só admins excluem.
+// Lista geral: só admins (o título fica dentro do Suspense, antes do notFound()).
+// A equipe acompanha os próprios trabalhos na Minha planilha.
 export default function TrabalhosPage({ searchParams }: PageProps<"/trabalhos">) {
   return (
     <Suspense fallback={<PageSkeleton />}>
@@ -29,8 +30,8 @@ export default function TrabalhosPage({ searchParams }: PageProps<"/trabalhos">)
 }
 
 async function JobsContent({ searchParams }: { searchParams: PageProps<"/trabalhos">["searchParams"] }) {
-  const { user } = await requireSession();
-  const params = parseJobListParams(await searchParams);
+  const { user } = await requireAdmin();
+  const params = { ...parseJobListParams(await searchParams), pessoa: undefined, visao: undefined };
 
   const [result, statuses, clients, people] = await Promise.all([
     listJobs(db, {
@@ -68,6 +69,7 @@ async function JobsContent({ searchParams }: { searchParams: PageProps<"/trabalh
       />
       <div className="flex flex-col gap-3">
         <JobsToolbar
+          path="/trabalhos"
           params={params}
           statuses={statuses.map(toStatusOption)}
           clients={clients.map((item) => ({ id: item.id, name: item.name, logoUrl: resolveMediaUrl(item.logoKey) }))}
@@ -76,10 +78,12 @@ async function JobsContent({ searchParams }: { searchParams: PageProps<"/trabalh
         <JobsTable
           rows={result.rows.map((item) => toJobRow(item, today))}
           statuses={statuses.map(toStatusOption)}
-          isAdmin={user.role === "admin"}
+          isAdmin
           filtered={filtered}
         />
-        {result.total > 0 && <JobsPagination params={params} total={result.total} pageCount={result.pageCount} />}
+        {result.total > 0 && (
+          <JobsPagination path="/trabalhos" params={params} total={result.total} pageCount={result.pageCount} />
+        )}
       </div>
     </div>
   );

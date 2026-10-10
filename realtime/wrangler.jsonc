@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "workboard-realtime",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "durable_objects": {
+    "bindings": [{ "name": "HUB", "class_name": "Hub" }]
+  },
+  // Durable Object com SQLite: é o que o plano gratuito do Workers aceita.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Hub"] }],
+  "vars": {
+    // Endereços do Workboard que podem abrir o websocket, separados por vírgula.
+    "ALLOWED_ORIGINS": "http://localhost:3000"
+  },
+  "observability": { "enabled": true }
+}

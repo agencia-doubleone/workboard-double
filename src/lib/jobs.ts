@@ -51,6 +51,27 @@ export function splitMentions(body: string): MessagePart[] {
   return parts;
 }
 
+// Minha planilha: lista (padrão) ou quadro por status; o quadro mostra tudo de uma vez, até um limite.
+export const SHEET_VIEWS = { lista: "Lista", quadro: "Quadro" } as const;
+export type SheetView = keyof typeof SHEET_VIEWS;
+export const SHEET_BOARD_LIMIT = 300;
+
+/** Abaixo disso, não cabe mais um trabalho entre dois vizinhos: a planilha é renumerada. */
+const MIN_POSITION_GAP = 1e-6;
+
+/**
+ * Posição de um trabalho arrastado para entre `before` (o de cima) e `after`
+ * (o de baixo) na planilha; null quando não há espaço (renumere e tente de novo).
+ * Sem vizinhos, devolve undefined: a posição não muda.
+ */
+export function positionBetween(before: number | undefined, after: number | undefined) {
+  if (before === undefined && after === undefined) return undefined;
+  if (before === undefined) return after! - 1;
+  if (after === undefined) return before + 1;
+  if (after - before < MIN_POSITION_GAP) return null;
+  return (before + after) / 2;
+}
+
 /** Hoje em "AAAA-MM-DD" no fuso da agência, para comparar com a data de entrega. */
 export function todayInSaoPaulo(now = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {

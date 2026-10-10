@@ -9,7 +9,7 @@ import { requireSession } from "@/lib/session";
 import { findJobByPit, listClientOptions, listJobStatuses, listTeamMembers } from "@/server/jobs";
 import { isMediaConfigured, resolveMediaUrl } from "@/server/media";
 import { JobForm } from "../../job-form";
-import { parsePit, toFormValues, toPersonView, toStatusOption } from "../../present";
+import { canSeeJob, parsePit, toFormValues, toPersonView, toStatusOption } from "../../present";
 
 export const metadata: Metadata = { title: "Editar trabalho" };
 
@@ -22,10 +22,11 @@ export default function EditarTrabalhoPage({ params }: PageProps<"/trabalhos/[pi
 }
 
 async function EditJobContent({ params }: { params: PageProps<"/trabalhos/[pit]/editar">["params"] }) {
-  await requireSession();
+  const { user } = await requireSession();
   const pit = parsePit((await params).pit);
   const found = pit ? await findJobByPit(db, pit) : null;
-  if (!found) notFound();
+  // Quem não é admin só edita os trabalhos em que está vinculado.
+  if (!found || !canSeeJob(found, user)) notFound();
 
   const [statuses, clients, team] = await Promise.all([
     listJobStatuses(db),

@@ -45,8 +45,17 @@ export const MEDIA_TYPES = {
 export type MediaExtension = keyof typeof MEDIA_TYPES;
 
 /** Primeiro nível de pasta no CDN. Novas áreas do sistema entram aqui. */
-export const MEDIA_FOLDERS = ["geral", "trabalhos", "clientes", "usuarios"] as const;
+export const MEDIA_FOLDERS = ["geral", "trabalhos", "clientes", "usuarios", "chat", "quadros"] as const;
 export type MediaFolder = (typeof MEDIA_FOLDERS)[number];
+
+export const MEDIA_FOLDER_LABELS: Record<MediaFolder, string> = {
+  geral: "Geral",
+  trabalhos: "Trabalhos",
+  clientes: "Clientes",
+  usuarios: "Usuários",
+  chat: "Chat",
+  quadros: "Quadros",
+};
 
 export const MEDIA_NAME_MAX_LENGTH = 200;
 
@@ -87,6 +96,21 @@ export type MediaUploadTicket = {
   key: string;
   expiresAt: string;
 };
+
+/** Anexo de uma mensagem (trabalhos e chat), pronto para o navegador. */
+export type AttachmentView = {
+  id: string;
+  url: string;
+  name: string;
+  /** Já formatado ("2,4 MB"). */
+  size: string;
+  /** Mostrado como miniatura (PSD tem tipo de imagem, mas o navegador não abre). */
+  isImage: boolean;
+};
+
+export function isPreviewableImage(type: string) {
+  return type.startsWith("image/") && type !== "image/vnd.adobe.photoshop";
+}
 
 /** Arquivo registrado, como /api/media/complete devolve. */
 export type MediaItem = {

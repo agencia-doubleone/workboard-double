@@ -3,6 +3,7 @@
 import { useOptimistic, useTransition } from "react";
 import { toast } from "sonner";
 
+import { celebrate, isCompletion } from "@/components/celebration";
 import { JobStatusBadge } from "@/components/job-status-badge";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
@@ -31,11 +32,17 @@ export function StatusSelect({
 
   function handleChange(next: string | null) {
     if (!next || next === optimistic) return;
+    const before = statuses.find((status) => status.id === optimistic);
+    const after = statuses.find((status) => status.id === next);
     startTransition(async () => {
       setOptimistic(next);
       const result = await setJobStatus({ jobId, statusId: next });
-      if (result.ok) toast.success(result.message);
-      else toast.error(result.error);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(result.message);
+      if (isCompletion(before, after)) celebrate();
     });
   }
 

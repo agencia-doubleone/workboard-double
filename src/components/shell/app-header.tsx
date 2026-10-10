@@ -5,13 +5,14 @@ import { usePathname } from "next/navigation";
 import { Suspense } from "react";
 
 import { Hint } from "@/components/hint";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import { usePreferences } from "@/components/preferences/preferences-store";
 import { Button } from "@/components/ui/button";
 import { useModKey } from "@/hooks/use-mod-key";
 import { getNavTitle } from "./nav-config";
 import { useShell } from "./shell-provider";
 
-/** Header do painel: recolher a sidebar, título da página e a conta (userMenu). */
+/** Header do painel: recolher a sidebar, título da página, o sino e a conta (userMenu). */
 export function AppHeader({ userMenu }: { userMenu: React.ReactNode }) {
   const { toggleSidebar } = useShell();
   const { sidebarCollapsed } = usePreferences();
@@ -19,7 +20,7 @@ export function AppHeader({ userMenu }: { userMenu: React.ReactNode }) {
   const label = sidebarCollapsed ? "Expandir menu" : "Recolher menu";
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-2 border-b px-2 md:px-3">
+    <header className="flex h-12 shrink-0 items-center gap-2 border-b px-2 md:px-3 print:hidden">
       <Hint label={label} shortcut={[modKey, "B"]} side="bottom">
         <Button
           variant="ghost"
@@ -39,7 +40,10 @@ export function AppHeader({ userMenu }: { userMenu: React.ReactNode }) {
           <HeaderTitle />
         </Suspense>
       </h2>
-      <div className="ml-auto flex items-center gap-1 pr-1">{userMenu}</div>
+      <div className="ml-auto flex items-center gap-3 pr-1">
+        <NotificationBell />
+        {userMenu}
+      </div>
     </header>
   );
 }

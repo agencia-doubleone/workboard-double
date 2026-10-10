@@ -7,7 +7,7 @@ import { headers } from "next/headers";
 import { z } from "zod";
 
 import { db } from "@/db";
-import { session } from "@/db/schema";
+import { session, whiteboard } from "@/db/schema";
 import type { AuditChanges } from "@/lib/audit";
 import { auth } from "@/lib/auth";
 import { captureResetDelivery } from "@/lib/auth-config";
@@ -28,6 +28,7 @@ import {
 } from "@/lib/validations/users";
 import { getRequestMeta, recordAudit, userEntity } from "@/server/audit";
 import { deleteMediaByKey } from "@/server/media";
+import { disconnectRealtimeAfter } from "@/server/realtime";
 import { countActiveSessions, findUserById, isEmailTaken } from "@/server/users";
 
 export type ActionResult =
@@ -220,6 +221,8 @@ export async function setUserPassword(input: SetUserPasswordInput): Promise<Acti
   } catch (error) {
     return failure(error, "Não foi possível alterar a senha.");
   }
+  // Tempo real: as abas abertas caem e só voltam com uma sessão válida (a atual reconecta sozinha).
+  disconnectRealtimeAfter([userId]);
 
   refresh();
   return {
@@ -320,6 +323,7 @@ export async function setUserActive(input: SetUserActiveInput): Promise<ActionRe
         ...ctx.meta,
       });
       message = `${target.name} foi desativado (${sessionsLabel(sessions)}).`;
+      disconnectRealtimeAfter([userId]);
     }
   } catch (error) {
     return failure(error, "Não foi possível alterar o status do usuário.");
@@ -360,6 +364,7 @@ export async function revokeUserSessions(input: { userId: string }): Promise<Act
   } catch (error) {
     return failure(error, "Não foi possível encerrar as sessões.");
   }
+  disconnectRealtimeAfter([target.id]);
 
   refresh();
   return {
@@ -385,6 +390,11 @@ export async function deleteUser(input: { userId: string }): Promise<ActionResul
 
   try {
     const sessions = await countActiveSessions(db, target.id);
+    // Quadros pessoais só existiam para ele: saem junto. Os coletivos ficam (sem dono, os admins gerenciam).
+    const privateBoards = await db
+      .delete(whiteboard)
+      .where(and(eq(whiteboard.ownerId, target.id), eq(whiteboard.access, "private")))
+      .returning({ id: whiteboard.id });
     // Remove sessões, contas e o usuário. Na auditoria, os eventos ficam
     // (actor_id vira null, nome/e-mail continuam copiados no registro).
     await auth.api.removeUser({ body: { userId: target.id }, headers: ctx.headers });
@@ -401,12 +411,14 @@ export async function deleteUser(input: { userId: string }): Promise<ActionResul
         role: target.role,
         sessionsRevoked: sessions,
         ...(photoRemoved !== undefined && { photoRemoved }),
+        ...(privateBoards.length > 0 && { privateBoardsRemoved: privateBoards.length }),
       },
       ...ctx.meta,
     });
   } catch (error) {
     return failure(error, "Não foi possível excluir o usuário.");
   }
+  disconnectRealtimeAfter([target.id]);
 
   refresh();
   return { ok: true, message: `${target.name} foi excluído.` };

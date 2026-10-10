@@ -13,6 +13,10 @@ const envSchema = z
     // Storage de arquivos (CDN na KingHost). Sem as duas, o upload fica desligado.
     MEDIA_CDN_URL: optional(z.url().transform((url) => url.replace(/\/+$/, ""))),
     MEDIA_SIGNING_SECRET: optional(z.string().min(32)),
+    // Tempo real (Worker no Cloudflare, veja realtime/README.md). Sem as duas,
+    // notificações e chat continuam funcionando, só que atualizando de tempos em tempos.
+    REALTIME_URL: optional(z.url().transform((url) => url.replace(/\/+$/, ""))),
+    REALTIME_SECRET: optional(z.string().min(32)),
     // Cofre de senhas dos clientes: 32 bytes em base64 (openssl rand -base64 32).
     // Sem ela, o cofre fica desligado. Trocar a chave torna as senhas salvas ilegíveis.
     VAULT_ENCRYPTION_KEY: optional(
@@ -27,6 +31,10 @@ const envSchema = z
   .refine((env) => Boolean(env.MEDIA_CDN_URL) === Boolean(env.MEDIA_SIGNING_SECRET), {
     message: "Defina MEDIA_CDN_URL e MEDIA_SIGNING_SECRET juntas (ou nenhuma das duas).",
     path: ["MEDIA_SIGNING_SECRET"],
+  })
+  .refine((env) => Boolean(env.REALTIME_URL) === Boolean(env.REALTIME_SECRET), {
+    message: "Defina REALTIME_URL e REALTIME_SECRET juntas (ou nenhuma das duas).",
+    path: ["REALTIME_SECRET"],
   });
 
 const parsed = envSchema.safeParse(process.env);

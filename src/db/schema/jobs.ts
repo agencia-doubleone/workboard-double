@@ -1,6 +1,8 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   date,
+  doublePrecision,
   index,
   integer,
   pgTable,
@@ -70,7 +72,7 @@ export const job = pgTable(
   ],
 );
 
-/** Funcionários do trabalho. */
+/** Funcionários do trabalho. Cada vínculo também guarda a ordem na planilha da pessoa. */
 export const jobAssignee = pgTable(
   "job_assignee",
   {
@@ -80,8 +82,19 @@ export const jobAssignee = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    /**
+     * Ordem na Minha planilha dessa pessoa (menor = mais acima). Quem entra num
+     * trabalho recebe -(segundos desde 1970): o mais novo fica no topo. Arrastar
+     * põe o trabalho entre os vizinhos (positionBetween em src/lib/jobs.ts).
+     */
+    position: doublePrecision("position")
+      .notNull()
+      .default(sql`(-extract(epoch from now()))`),
   },
-  (table) => [primaryKey({ columns: [table.jobId, table.userId] }), index("job_assignee_user_idx").on(table.userId)],
+  (table) => [
+    primaryKey({ columns: [table.jobId, table.userId] }),
+    index("job_assignee_user_position_idx").on(table.userId, table.position),
+  ],
 );
 
 /** Cada troca de status (inclusive a inicial), para o histórico e relatórios. */

@@ -18,6 +18,8 @@ export const metadata: Metadata = {
     default: "Workboard",
   },
   description: "Controle dos trabalhos da agência.",
+  // Nome do atalho na tela de início do iPhone/iPad (<meta name="apple-mobile-web-app-title">).
+  appleWebApp: { title: "Workboard" },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -12,16 +12,18 @@ import { getAdminSession } from "@/lib/session";
 import {
   createJobStatusSchema,
   jobStatusTargetSchema,
-  moveJobStatusSchema,
+  reorderJobStatusesSchema,
   updateJobStatusSchema,
   type CreateJobStatusInput,
+  type ReorderJobStatusesInput,
   type UpdateJobStatusInput,
 } from "@/lib/validations/jobs";
 import { getRequestMeta, recordAudit } from "@/server/audit";
 import { countJobsWithStatus, findJobStatusById } from "@/server/jobs";
 
 // Status de trabalho: só admins mexem. O padrão e os status em uso não podem
-// ser apagados (o banco também impede: FK restrict em job.status_id).
+// ser apagados (o banco também impede: FK restrict em job.status_id). Status de
+// cancelamento sempre encerram (check no banco) e nunca são o padrão.
 
 export type StatusActionResult =
   | { ok: true; message: string }
@@ -59,18 +61,24 @@ export async function createJobStatus(input: CreateJobStatusInput): Promise<Stat
   if (!ctx) return FORBIDDEN;
   const parsed = createJobStatusSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
+  const values = { ...parsed.data, isFinal: parsed.data.isFinal || parsed.data.isCanceled };
 
   try {
     const [{ last }] = await db.select({ last: max(jobStatus.position) }).from(jobStatus);
     const [created] = await db
       .insert(jobStatus)
-      .values({ ...parsed.data, position: (last ?? -1) + 1 })
+      .values({ ...values, position: (last ?? -1) + 1 })
       .returning();
     await recordAudit({
       action: "job_status.created",
       actor: ctx.actor,
       entity: statusEntity(created),
-      metadata: { textColor: created.textColor, backgroundColor: created.backgroundColor, isFinal: created.isFinal },
+      metadata: {
+        textColor: created.textColor,
+        backgroundColor: created.backgroundColor,
+        isFinal: created.isFinal,
+        isCanceled: created.isCanceled,
+      },
       ...ctx.meta,
     });
   } catch (error) {
@@ -91,7 +99,8 @@ export async function updateJobStatus(input: UpdateJobStatusInput): Promise<Stat
   const current = await findJobStatusById(db, parsed.data.statusId);
   if (!current) return NOT_FOUND;
 
-  const { name, textColor, backgroundColor, isFinal } = parsed.data;
+  const { name, textColor, backgroundColor, isCanceled } = parsed.data;
+  const isFinal = parsed.data.isFinal || isCanceled;
   if (isFinal && current.isDefault) {
     return { ok: false, error: "O status padrão não pode encerrar o trabalho: todo trabalho novo nasceria encerrado." };
   }
@@ -100,10 +109,14 @@ export async function updateJobStatus(input: UpdateJobStatusInput): Promise<Stat
   if (textColor !== current.textColor) changes.textColor = { from: current.textColor, to: textColor };
   if (backgroundColor !== current.backgroundColor) changes.backgroundColor = { from: current.backgroundColor, to: backgroundColor };
   if (isFinal !== current.isFinal) changes.isFinal = { from: current.isFinal, to: isFinal };
+  if (isCanceled !== current.isCanceled) changes.isCanceled = { from: current.isCanceled, to: isCanceled };
   if (Object.keys(changes).length === 0) return { ok: true, message: "Nada para salvar." };
 
   try {
-    await db.update(jobStatus).set({ name, textColor, backgroundColor, isFinal }).where(eq(jobStatus.id, current.id));
+    await db
+      .update(jobStatus)
+      .set({ name, textColor, backgroundColor, isFinal, isCanceled })
+      .where(eq(jobStatus.id, current.id));
   } catch (error) {
     if (isUniqueViolation(error)) return DUPLICATE;
     console.error(error);
@@ -164,30 +177,46 @@ export async function setDefaultJobStatus(input: { statusId: string }): Promise<
   return { ok: true, message: `Trabalhos novos começam em “${current.name}”.` };
 }
 
-/** Sobe ou desce um status na ordem (a ordem é a das listas de status). */
-export async function moveJobStatus(input: { statusId: string; direction: "up" | "down" }): Promise<StatusActionResult> {
+/**
+ * Grava a ordem depois de arrastar (a ordem é a das listas de status). A tela
+ * manda a lista inteira; se ela não bate com o que existe (alguém criou ou
+ * excluiu um status nesse meio-tempo), nada muda e a página recarrega.
+ */
+export async function reorderJobStatuses(input: ReorderJobStatusesInput): Promise<StatusActionResult> {
   const ctx = await getAdminContext();
   if (!ctx) return FORBIDDEN;
-  const parsed = moveJobStatusSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Status inválido." };
+  const parsed = reorderJobStatusesSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Ordem inválida." };
+  const { statusId, orderedIds } = parsed.data;
 
-  const ordered = await db.select().from(jobStatus).orderBy(asc(jobStatus.position), asc(jobStatus.createdAt));
-  const index = ordered.findIndex((row) => row.id === parsed.data.statusId);
-  if (index < 0) return NOT_FOUND;
-  const target = parsed.data.direction === "up" ? index - 1 : index + 1;
-  if (target < 0 || target >= ordered.length) return { ok: true, message: "Já está no limite." };
+  const current = await db.select().from(jobStatus).orderBy(asc(jobStatus.position), asc(jobStatus.createdAt));
+  const known = new Set(current.map((row) => row.id));
+  const sameSet =
+    orderedIds.length === current.length &&
+    new Set(orderedIds).size === orderedIds.length &&
+    orderedIds.every((id) => known.has(id));
+  if (!sameSet) {
+    refresh();
+    return { ok: false, error: "A lista de status mudou. Confira a ordem e tente de novo." };
+  }
+  const moved = current.find((row) => row.id === statusId);
+  if (!moved) return NOT_FOUND;
 
-  const reordered = [...ordered];
-  [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
-  const [first, ...rest] = reordered.map((row, position) =>
-    db.update(jobStatus).set({ position }).where(eq(jobStatus.id, row.id)),
+  const byId = new Map(current.map((row) => [row.id, row]));
+  // Só regrava quem mudou de posição (inclusive posições repetidas de antes).
+  const updates = orderedIds
+    .map((id, position) => ({ id, position }))
+    .filter(({ id, position }) => byId.get(id)!.position !== position);
+  if (updates.length === 0) return { ok: true, message: "" };
+  const [first, ...rest] = updates.map(({ id, position }) =>
+    db.update(jobStatus).set({ position }).where(eq(jobStatus.id, id)),
   );
   await db.batch([first, ...rest]);
   await recordAudit({
     action: "job_status.reordered",
     actor: ctx.actor,
-    entity: statusEntity(ordered[index]),
-    metadata: { order: reordered.map((row) => row.name) },
+    entity: statusEntity(moved),
+    metadata: { order: orderedIds.map((id) => byId.get(id)!.name) },
     ...ctx.meta,
   });
 

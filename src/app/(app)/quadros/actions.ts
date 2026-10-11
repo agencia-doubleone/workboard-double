@@ -23,7 +23,8 @@ import {
   type SaveElementsInput,
   type UpdateWhiteboardInput,
 } from "@/lib/validations/whiteboards";
-import { WHITEBOARD_ACCESS, type StoredElement, type WhiteboardAccess } from "@/lib/whiteboards";
+import { isStickyElement, WHITEBOARD_ACCESS, type StoredElement, type WhiteboardAccess } from "@/lib/whiteboards";
+import { achievementsAfter, onStickiesCreated, onWhiteboardSaved } from "@/server/achievements";
 import { getRequestMeta, recordAudit } from "@/server/audit";
 import { filterActiveUserIds } from "@/server/jobs";
 import { notifyWhiteboardShared } from "@/server/notify";
@@ -32,6 +33,7 @@ import {
   canLinkJob,
   canManageWhiteboard,
   findAccessibleWhiteboard,
+  findSavedElementIds,
   listWhiteboardChanges,
   saveWhiteboardElements,
   saveWhiteboardPreview,
@@ -40,7 +42,8 @@ import {
 
 // Quadros brancos. Quem acessa edita o desenho; quem gerencia (o dono e, nos
 // coletivos, os admins) muda nome, acesso e vínculo e exclui. Na auditoria
-// entram criação, edição e exclusão; o desenho não (é o dia a dia).
+// entram criação, edição e exclusão; o desenho não (é o dia a dia). Criar
+// quadros e post-its conta para as conquistas.
 
 export type WhiteboardActionResult =
   | { ok: true; message: string; id?: string }
@@ -114,6 +117,9 @@ export async function createWhiteboard(input: CreateWhiteboardInput): Promise<Wh
     ...getRequestMeta(await headers()),
   });
   notifyWhiteboardShared({ board: { id, title: data.title }, actor: ctx.actor, userIds: memberIds });
+  achievementsAfter("quadro criado", (database) =>
+    onWhiteboardSaved(database, { userId: ctx.actor.id, created: true, team: data.access === "team" }),
+  );
   return { ok: true, message: "Quadro criado.", id };
 }
 
@@ -198,6 +204,11 @@ export async function updateWhiteboard(input: UpdateWhiteboardInput): Promise<Wh
   // Quem acessa pode ter mudado: a sala fecha e cada um volta se ainda puder.
   if (changes.access || changes.job || removed.length) closeBoardRoomAfter(board.id);
   notifyWhiteboardShared({ board: { id: board.id, title: data.title }, actor: ctx.actor, userIds: added });
+  if (data.access === "team" && board.access !== "team" && board.ownerId === ctx.actor.id) {
+    achievementsAfter("quadro da equipe", (database) =>
+      onWhiteboardSaved(database, { userId: ctx.actor.id, created: false, team: true }),
+    );
+  }
   refresh();
   return { ok: true, message: "Quadro atualizado." };
 }
@@ -243,9 +254,18 @@ export async function saveElements(input: SaveElementsInput): Promise<ElementsAc
     const result = elementSchema.safeParse(element);
     return result.success ? [result.data as StoredElement] : [];
   });
+  // Post-its que ainda não estavam no banco foram criados agora por quem grava (conquista "Post-it Mania").
+  const stickyIds = elements.filter((element) => !element.isDeleted && isStickyElement(element)).map((element) => element.id);
+  const existing = await findSavedElementIds(db, found.board.id, stickyIds);
   const saved = elements.length
     ? await saveWhiteboardElements(db, { whiteboardId: found.board.id, elements, userId: ctx.actor.id })
     : 0;
+  const newStickies = stickyIds.filter((id) => !existing.has(id));
+  if (newStickies.length) {
+    achievementsAfter("post-its", (database) =>
+      onStickiesCreated(database, { userId: ctx.actor.id, whiteboardId: found.board.id, elementIds: newStickies }),
+    );
+  }
   return { ok: true, saved, skipped: parsed.data.elements.length - elements.length };
 }
 

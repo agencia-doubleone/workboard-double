@@ -62,6 +62,12 @@ export type RealtimeEvent =
   /** `userId` leu a conversa até `lastReadAt` (o "Visto"). */
   | { type: "chat.read"; conversationId: string; userId: string; lastReadAt: string }
   | { type: "chat.deleted"; conversationId: string; messageId: string }
+  /** Reações ou fixadas mudaram numa conversa do chat: recarregar. */
+  | { type: "chat.updated"; conversationId: string }
+  /** Reações ou fixadas mudaram nas mensagens de um trabalho: recarregar. */
+  | { type: "job.messages"; jobId: string }
+  /** Conquista nova desbloqueada pelo servidor: a tela pede os avisos ainda não vistos. */
+  | { type: "achievement.unlocked" }
   /** Repassado pelo Worker: quem está digitando sai do token, nunca do navegador. */
   | { type: "typing"; from: string };
 

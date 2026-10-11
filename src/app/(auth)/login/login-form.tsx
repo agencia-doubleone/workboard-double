@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertCircleIcon, Loader2Icon } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { z } from "zod";
@@ -16,7 +17,8 @@ import { AuthHeading } from "../auth-heading";
 
 type FieldErrors = Partial<Record<keyof SignInInput, string[]>>;
 
-export function LoginForm() {
+/** `canResetPassword`: com envio de e-mail, "Esqueceu a senha?" leva à tela de pedir o link. */
+export function LoginForm({ canResetPassword }: { canResetPassword: boolean }) {
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -97,9 +99,18 @@ export function LoginForm() {
           </Button>
         </FieldGroup>
       </form>
-      <p className="text-center text-xs text-muted-foreground">
-        Esqueceu a senha? Peça um novo link a um administrador.
-      </p>
+      {canResetPassword ? (
+        <Link
+          href="/esqueci-a-senha"
+          className="self-center text-xs text-muted-foreground outline-none hover:text-foreground hover:underline focus-visible:underline"
+        >
+          Esqueceu a senha?
+        </Link>
+      ) : (
+        <p className="text-center text-xs text-muted-foreground">
+          Esqueceu a senha? Peça um novo link a um administrador.
+        </p>
+      )}
     </div>
   );
 }

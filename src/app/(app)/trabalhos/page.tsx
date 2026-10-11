@@ -51,8 +51,13 @@ async function JobsContent({ searchParams }: { searchParams: PageProps<"/trabalh
   // Página além da última (ex.: depois de filtrar): vai para a última que existe.
   if (result.total > 0 && params.pagina > result.pageCount) redirect(jobListHref({ ...params, pagina: result.pageCount }));
   const today = todayInSaoPaulo();
+  const canceledView = params.situacao === "cancelados";
   const filtered = Boolean(
-    params.busca || params.status || params.cliente || params.funcionario || params.situacao !== DEFAULT_JOB_SITUATION,
+    params.busca ||
+      params.status ||
+      params.cliente ||
+      params.funcionario ||
+      (params.situacao !== DEFAULT_JOB_SITUATION && !canceledView),
   );
 
   return (
@@ -80,6 +85,14 @@ async function JobsContent({ searchParams }: { searchParams: PageProps<"/trabalh
           statuses={statuses.map(toStatusOption)}
           isAdmin
           filtered={filtered}
+          emptyMessage={
+            canceledView
+              ? {
+                  title: "Nenhum trabalho cancelado",
+                  description: "Trabalho cancelado sai das outras listas, do calendário e dos relatórios, e fica aqui.",
+                }
+              : undefined
+          }
         />
         {result.total > 0 && (
           <JobsPagination path="/trabalhos" params={params} total={result.total} pageCount={result.pageCount} />

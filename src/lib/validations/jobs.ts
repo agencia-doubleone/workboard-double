@@ -56,6 +56,8 @@ export const sendMessageSchema = z
       .array(z.uuid())
       .max(MESSAGE_ATTACHMENTS_MAX, `No máximo ${MESSAGE_ATTACHMENTS_MAX} anexos por mensagem.`)
       .transform((ids) => [...new Set(ids)]),
+    /** Algum anexo é imagem colada com Ctrl+V (conquista "Print ou Não Aconteceu"). */
+    pastedImage: z.boolean().optional(),
   })
   .refine((data) => data.body.length > 0 || data.attachmentIds.length > 0, {
     path: ["body"],
@@ -89,6 +91,8 @@ const statusFields = {
   textColor: hexColor,
   backgroundColor: hexColor,
   isFinal: z.boolean(),
+  /** Cancela o trabalho; o servidor grava junto isFinal (todo cancelamento encerra). */
+  isCanceled: z.boolean(),
 };
 
 export const createJobStatusSchema = z.object(statusFields);
@@ -99,7 +103,9 @@ export type UpdateJobStatusInput = z.input<typeof updateJobStatusSchema>;
 
 export const jobStatusTargetSchema = z.object({ statusId: z.uuid("Status inválido.") });
 
-export const moveJobStatusSchema = z.object({
+/** Nova ordem depois de arrastar: todos os status, de cima para baixo, e qual foi movido (para a auditoria). */
+export const reorderJobStatusesSchema = z.object({
   statusId: z.uuid("Status inválido."),
-  direction: z.enum(["up", "down"]),
+  orderedIds: z.array(z.uuid("Status inválido.")).min(1).max(200),
 });
+export type ReorderJobStatusesInput = z.input<typeof reorderJobStatusesSchema>;

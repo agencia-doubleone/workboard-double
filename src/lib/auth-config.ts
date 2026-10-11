@@ -43,7 +43,8 @@ const ADMIN_HTTP_PATHS = [
 const PROFILE_HTTP_PATHS = ["/update-user", "/change-password"];
 
 // O Better Auth engole erros do sendResetPassword (só loga). Este store
-// permite a quem disparou o reset saber se o e-mail falhou de verdade.
+// permite a quem disparou o reset (o admin, em usuarios/actions.ts) saber se o
+// e-mail falhou de verdade. Sem store, o pedido veio do "Esqueceu a senha?" do login.
 type ResetDelivery = { error?: unknown };
 const resetDeliveryStore = new AsyncLocalStorage<ResetDelivery>();
 
@@ -57,9 +58,15 @@ type CreateAuthOptions = {
   database: Database;
   baseURL: string;
   secret: string;
+  /**
+   * Roda uma tarefa depois de responder (no Next, after()). O e-mail do "Esqueceu
+   * a senha?" sai por aqui: esperar o SMTP só quando a conta existe deixaria a
+   * resposta mais lenta e entregaria quais e-mails têm conta. Sem isso, espera.
+   */
+  runInBackground?: (task: () => Promise<void>) => void;
 };
 
-export function createAuth({ database, baseURL, secret }: CreateAuthOptions) {
+export function createAuth({ database, baseURL, secret, runInBackground }: CreateAuthOptions) {
   const recordAudit = createAuditRecorder(database);
 
   return betterAuth({
@@ -83,21 +90,36 @@ export function createAuth({ database, baseURL, secret }: CreateAuthOptions) {
       resetPasswordTokenExpiresIn: PASSWORD_RESET_EXPIRES_IN_HOURS * 60 * 60,
       // Nova senha pelo link derruba todas as sessões abertas.
       revokeSessionsOnPasswordReset: true,
-      sendResetPassword: async ({ user, url }) => {
-        try {
-          await sendEmail(
-            passwordResetEmail({
-              to: user.email,
-              name: user.name,
-              url,
-              expiresInHours: PASSWORD_RESET_EXPIRES_IN_HOURS,
-            }),
-          );
-        } catch (error) {
-          const delivery = resetDeliveryStore.getStore();
-          if (!delivery) throw error;
-          delivery.error = error;
+      sendResetPassword: async ({ user, url }, request) => {
+        const delivery = resetDeliveryStore.getStore();
+        const message = passwordResetEmail({
+          to: user.email,
+          name: user.name,
+          url,
+          expiresInHours: PASSWORD_RESET_EXPIRES_IN_HOURS,
+          requestedBy: delivery ? "admin" : "self",
+        });
+        if (delivery) {
+          try {
+            await sendEmail(message);
+          } catch (error) {
+            delivery.error = error;
+          }
+          return;
         }
+
+        // Pedido pelo login: conta desativada não recebe nada (e a resposta é a mesma).
+        if ((user as { banned?: boolean | null }).banned) return;
+        await recordAudit({
+          action: "auth.password_reset_requested",
+          actor: null,
+          entity: userEntity(user),
+          ...getRequestMeta(request?.headers),
+        });
+        const send = () =>
+          sendEmail(message).catch((error) => console.error("[email] falha no envio do reset", error));
+        if (runInBackground) runInBackground(send);
+        else await send();
       },
       onPasswordReset: async ({ user }, request) => {
         await recordAudit({
@@ -112,8 +134,9 @@ export function createAuth({ database, baseURL, secret }: CreateAuthOptions) {
       // Em memória não funciona bem em serverless (cada instância tem seu contador).
       storage: "database",
     },
-    // Reset de senha por enquanto só é disparado pelo admin.
-    disabledPaths: [...ADMIN_HTTP_PATHS, ...PROFILE_HTTP_PATHS, "/request-password-reset"],
+    // O /request-password-reset fica aberto: é o "Esqueceu a senha?" do login (o
+    // Better Auth limita a 3 pedidos por minuto e responde igual exista ou não a conta).
+    disabledPaths: [...ADMIN_HTTP_PATHS, ...PROFILE_HTTP_PATHS],
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
         if (ctx.path !== "/sign-out") return;

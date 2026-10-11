@@ -6,7 +6,7 @@ import { listAssignees } from "@/server/jobs";
 
 // Consultas do calendário (sem "server-only": também rodam nos scripts de
 // verificação contra PGlite). Quem não é admin só vê os próprios trabalhos:
-// a página passa o próprio id em `assigneeId`.
+// a página passa o próprio id em `assigneeId`. Cancelados nunca entram.
 
 export async function listJobsDue(
   database: Database,
@@ -20,7 +20,12 @@ export async function listJobsDue(
     openOnly: boolean;
   },
 ) {
-  const conditions: SQL[] = [isNotNull(job.dueDate), gte(job.dueDate, filters.from), lte(job.dueDate, filters.to)];
+  const conditions: SQL[] = [
+    isNotNull(job.dueDate),
+    gte(job.dueDate, filters.from),
+    lte(job.dueDate, filters.to),
+    eq(jobStatus.isCanceled, false),
+  ];
   if (filters.openOnly) conditions.push(eq(job.active, true), eq(jobStatus.isFinal, false));
   if (filters.assigneeId) {
     conditions.push(

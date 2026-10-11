@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { index, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 import { user } from "./auth";
@@ -44,9 +45,50 @@ export const chatMessage = pgTable(
     authorId: text("author_id").references(() => user.id, { onDelete: "set null" }),
     authorName: text("author_name").notNull(),
     body: text("body").notNull(),
+    /** Fixada no topo da conversa (null = não). Quem fixou pode ser excluído: o nome fica copiado. */
+    pinnedAt: timestamp("pinned_at", { withTimezone: true }),
+    pinnedById: text("pinned_by_id").references(() => user.id, { onDelete: "set null" }),
+    pinnedByName: text("pinned_by_name"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (table) => [index("chat_message_conversation_idx").on(table.conversationId, table.createdAt)],
+  (table) => [
+    index("chat_message_conversation_idx").on(table.conversationId, table.createdAt),
+    index("chat_message_pinned_idx").on(table.conversationId).where(sql`${table.pinnedAt} is not null`),
+  ],
+);
+
+/** Reações às mensagens do chat: cada pessoa conta uma vez por emoji. */
+export const chatMessageReaction = pgTable(
+  "chat_message_reaction",
+  {
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => chatMessage.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    emoji: text("emoji").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.messageId, table.userId, table.emoji] })],
+);
+
+/** Mensagens do chat que cada pessoa guardou nas favoritas (só ela vê). */
+export const chatMessageFavorite = pgTable(
+  "chat_message_favorite",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => chatMessage.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.messageId] }),
+    index("chat_message_favorite_message_idx").on(table.messageId),
+  ],
 );
 
 /** Anexos de uma mensagem do chat (arquivos no CDN, pasta "chat"). */

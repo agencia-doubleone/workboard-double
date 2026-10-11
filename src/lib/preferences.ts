@@ -12,7 +12,18 @@ export const ACCENTS = [
   { id: "rose", label: "Rosa", swatch: "oklch(0.58 0.22 17)" },
   { id: "violet", label: "Violeta", swatch: "oklch(0.55 0.24 293)" },
 ] as const;
-export type Accent = (typeof ACCENTS)[number]["id"];
+
+/**
+ * Cor secreta (conquista "Além do Arco-Íris"): o destaque passa por todas as
+ * cores. Aparece nas Configurações depois de liberada neste navegador (clicando
+ * nas cores na ordem do arco-íris). Não conta para a conquista "Camaleão".
+ */
+export const SECRET_ACCENT = {
+  id: "rainbow",
+  label: "Arco-íris",
+  swatch: "conic-gradient(oklch(0.62 0.2 17), oklch(0.75 0.16 70), oklch(0.62 0.14 162), oklch(0.55 0.2 262), oklch(0.55 0.24 293), oklch(0.62 0.2 17))",
+} as const;
+export type Accent = (typeof ACCENTS)[number]["id"] | typeof SECRET_ACCENT.id;
 
 export const DEFAULT_ACCENT: Accent = "graphite";
 
@@ -24,6 +35,8 @@ export type Preferences = {
   sound: boolean;
   /** Confetes e som de conquista ao concluir um trabalho. */
   celebrate: boolean;
+  /** A cor secreta já foi liberada neste navegador. */
+  rainbow: boolean;
 };
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -32,6 +45,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   sidebarCollapsed: false,
   sound: true,
   celebrate: true,
+  rainbow: false,
 };
 
 export const STORAGE_KEYS = {
@@ -40,6 +54,7 @@ export const STORAGE_KEYS = {
   sidebar: "wb:sidebar",
   sound: "wb:sound",
   celebrate: "wb:celebrate",
+  rainbow: "wb:rainbow",
 } as const;
 
 /**
@@ -48,14 +63,14 @@ export const STORAGE_KEYS = {
  * <FixedTheme> do layout cobre a navegação no cliente, esta lista cobre a
  * primeira carga (o script abaixo roda antes da hidratação).
  */
-export const FIXED_THEME_PATHS = ["/login", "/redefinir-senha"];
+export const FIXED_THEME_PATHS = ["/login", "/esqueci-a-senha", "/redefinir-senha"];
 
 export function isThemeMode(value: unknown): value is ThemeMode {
   return THEME_MODES.includes(value as ThemeMode);
 }
 
 export function isAccent(value: unknown): value is Accent {
-  return ACCENTS.some((accent) => accent.id === value);
+  return value === SECRET_ACCENT.id || ACCENTS.some((accent) => accent.id === value);
 }
 
 /**
@@ -66,7 +81,7 @@ export function isAccent(value: unknown): value is Accent {
 export const preferencesScript = `(() => {
   try {
     const keys = ${JSON.stringify(STORAGE_KEYS)};
-    const accents = ${JSON.stringify(ACCENTS.map((accent) => accent.id))};
+    const accents = ${JSON.stringify([...ACCENTS.map((accent) => accent.id), SECRET_ACCENT.id])};
     const root = document.documentElement;
     const fixed = ${JSON.stringify(FIXED_THEME_PATHS)};
     const path = location.pathname;

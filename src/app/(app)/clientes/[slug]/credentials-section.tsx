@@ -96,7 +96,8 @@ export function CredentialsSection({ clientId, credentials, isAdmin, vaultEnable
   }
 
   return (
-    <Card>
+    // id: a busca global leva direto para cá (/clientes/{slug}#cofre).
+    <Card id="cofre" className="scroll-mt-6">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <LockKeyholeIcon className="size-4 text-muted-foreground" />

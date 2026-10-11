@@ -17,6 +17,7 @@ import {
   type UpdateAvatarInput,
   type UpdateProfileInput,
 } from "@/lib/validations/profile";
+import { achievementsAfter, onProfileUpdated } from "@/server/achievements";
 import { getRequestMeta, recordAudit, userEntity } from "@/server/audit";
 import { deleteMediaByKey, findMediaById } from "@/server/media";
 import { countActiveSessions } from "@/server/users";
@@ -85,6 +86,9 @@ export async function updateProfile(input: UpdateProfileInput): Promise<ProfileA
   } catch (error) {
     return failure(error, "Não foi possível salvar o perfil.");
   }
+  if (birthday && changes.birthday) {
+    achievementsAfter("aniversário", (database) => onProfileUpdated(database, { userId: ctx.user.id, birthday: true }));
+  }
 
   refresh();
   return { ok: true, message: "Perfil atualizado." };
@@ -125,6 +129,7 @@ export async function updateAvatar(input: UpdateAvatarInput): Promise<ProfileAct
     metadata: { key: photo.key },
     ...ctx.meta,
   });
+  achievementsAfter("foto do perfil", (database) => onProfileUpdated(database, { userId: ctx.user.id, photo: true }));
 
   refresh();
   return { ok: true, message: "Foto atualizada." };

@@ -1,3 +1,4 @@
+export * from "./achievements";
 export * from "./audit";
 export * from "./auth";
 export * from "./chat";

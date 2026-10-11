@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { formatDateTime, formatRelative } from "@/lib/format";
 import { NOTIFICATIONS_PAGE_SIZE, notificationHref } from "@/lib/notifications";
 import { getSession } from "@/lib/session";
+import { achievementsAfter, onNotificationsRead } from "@/server/achievements";
 import { countUnreadConversations } from "@/server/chat";
 import { resolveMediaUrl } from "@/server/media";
 import {
@@ -72,5 +73,9 @@ export async function readNotifications(input: { ids?: string[] } = {}) {
   if (!parsed.success) return { ok: false as const };
   const changed = await markNotificationsRead(db, session.user.id, parsed.data.ids);
   if (changed > 0) publishRealtimeAfter([session.user.id], { type: "notifications.read" });
+  // Zerar o sino com 10 ou mais de uma vez: "Paz Interior".
+  if (changed >= 10) {
+    achievementsAfter("sino zerado", (database) => onNotificationsRead(database, { userId: session.user.id, cleared: changed }));
+  }
   return { ok: true as const, changed };
 }

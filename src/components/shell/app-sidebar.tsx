@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Suspense } from "react";
+import { Suspense, useRef } from "react";
 
+import { reportAchievement } from "@/components/achievements/achievement-toasts";
 import { DoubleOneLogo } from "@/components/double-one-logo";
 import { Hint } from "@/components/hint";
 import { useRealtime } from "@/components/realtime/realtime-store";
@@ -53,15 +54,28 @@ export function AppSidebar(props: AppSidebarProps) {
   );
 }
 
+/** Cliques no logo com menos disso entre um e outro contam como "seguidos". */
+const LOGO_CLICK_GAP_MS = 800;
+
 function SidebarBody({ adminNav }: AppSidebarProps) {
   const { onNavigate } = useSidebarSurface();
+  const logoClicks = useRef({ count: 0, last: 0 });
+
+  // Segredo: 10 cliques seguidos no logo ("O Que Você Tá Procurando?").
+  function handleLogoClick(event: React.MouseEvent) {
+    onNavigate?.();
+    const { count, last } = logoClicks.current;
+    const streak = event.timeStamp - last < LOGO_CLICK_GAP_MS ? count + 1 : 1;
+    logoClicks.current = { count: streak, last: event.timeStamp };
+    if (streak === 10) reportAchievement({ type: "logo" });
+  }
 
   return (
     <>
       <div className="flex h-12 shrink-0 items-center px-3 md:mt-2">
         <Link
           href="/"
-          onClick={onNavigate}
+          onClick={handleLogoClick}
           className="flex min-w-0 items-center gap-2.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/50"
         >
           {/* Caixa de 32 px: com a sidebar recolhida, o logo fica alinhado aos ícones. */}

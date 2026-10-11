@@ -11,6 +11,7 @@ import {
   SheetIcon,
   Table2Icon,
   TagsIcon,
+  TrophyIcon,
   UsersIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -38,6 +39,7 @@ export const NAV_SECTIONS = {
       { title: "Quadros", href: "/quadros", icon: PresentationIcon },
       { title: "Chat", href: "/chat", icon: MessagesSquareIcon, badge: "chats" },
       { title: "Clientes", href: "/clientes", icon: Building2Icon },
+      { title: "Conquistas", href: "/conquistas", icon: TrophyIcon },
     ],
   },
   admin: {

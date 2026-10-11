@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import { isEmailConfigured } from "@/lib/email";
 import { getSession } from "@/lib/session";
 import { LoginForm } from "./login-form";
 
@@ -15,7 +16,7 @@ export default function LoginPage() {
       <Suspense>
         <RedirectIfAuthenticated />
       </Suspense>
-      <LoginForm />
+      <LoginForm canResetPassword={isEmailConfigured()} />
     </>
   );
 }

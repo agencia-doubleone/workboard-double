@@ -7,6 +7,7 @@
 // - No prazo: concluído no dia da entrega ou antes (dia no fuso da agência).
 // - Tempo até concluir: da criação (lançamento) até a conclusão.
 // - Em aberto: ativo e com status que não encerra. Atrasado: em aberto com a entrega já passada.
+// - Cancelados (status de cancelamento) ficam fora de todas as contas.
 //
 // Planejamentos (contados por mês, não por dia):
 // - Meses do período: todos os meses que o período toca (1 a 10/10 = outubro inteiro).

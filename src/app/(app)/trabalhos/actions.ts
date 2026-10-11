@@ -10,7 +10,8 @@ import { z } from "zod";
 import { db } from "@/db";
 import { job, jobAssignee, jobMessage, jobMessageAttachment, jobStatusHistory, user } from "@/db/schema";
 import type { AuditChanges } from "@/lib/audit";
-import { extractMentions, positionBetween } from "@/lib/jobs";
+import { extractMentions, isJobCompletion, positionBetween } from "@/lib/jobs";
+import { normalizeMessageBody, PINNED_MESSAGES_MAX, toReactionViews, type MessageUpdateResult } from "@/lib/messages";
 import { getSession } from "@/lib/session";
 import {
   createJobSchema,
@@ -26,6 +27,16 @@ import {
   type SendMessageInput,
   type UpdateJobInput,
 } from "@/lib/validations/jobs";
+import { messageFavoriteSchema, messagePinSchema, messageReactionSchema } from "@/lib/validations/messages";
+import {
+  achievementsAfter,
+  onJobCompleted,
+  onMessageDeleted,
+  onMessageFavorited,
+  onMessagePinned,
+  onMessageSent,
+  onReactionAdded,
+} from "@/server/achievements";
 import { getRequestMeta, recordAudit } from "@/server/audit";
 import { findClientById } from "@/server/clients";
 import {
@@ -44,6 +55,13 @@ import {
   type JobStatusRecord,
 } from "@/server/jobs";
 import { deleteMedia, deleteMediaByKey, findMediaById } from "@/server/media";
+import {
+  countPinnedMessages,
+  listMessageExtras,
+  setMessagePinned,
+  toggleFavorite,
+  toggleReaction,
+} from "@/server/messages";
 import { markJobNotificationsRead } from "@/server/notifications";
 import { notifyAssignments, notifyJobMessage, notifyStatusChange } from "@/server/notify";
 import { publishRealtimeAfter } from "@/server/realtime";
@@ -51,9 +69,13 @@ import { richTextExcerpt, sanitizeRichText } from "@/server/rich-text";
 
 // Só admins cadastram e excluem trabalhos. Editar, mudar status, ativar e
 // conversar: admins em qualquer trabalho, o resto da equipe só nos trabalhos em
-// que está vinculada (para os outros, o trabalho "não existe"). Toda mudança vai
+// que está vinculada (para os outros, o trabalho "não existe"). Cancelar (pôr num
+// status de cancelamento) ou tirar de cancelado é só de admins: o cancelado sai da
+// planilha, dos relatórios e dos atrasados. Toda mudança vai
 // para a auditoria (mensagens não: são conversa). Entrar ou sair do trabalho,
 // trocar o status e mandar mensagem notificam os funcionários (src/server/notify.ts).
+// Concluir um trabalho e mexer nas mensagens contam para as conquistas
+// (src/server/achievements), depois da resposta.
 
 export type JobActionResult =
   | { ok: true; message: string; pit?: number }
@@ -62,6 +84,7 @@ export type JobActionResult =
 const UNAUTHENTICATED = { ok: false, error: "Sua sessão expirou. Entre de novo." } as const;
 const FORBIDDEN = { ok: false, error: "Você não tem permissão para esta ação." } as const;
 const JOB_NOT_FOUND = { ok: false, error: "Trabalho não encontrado." } as const;
+const CANCEL_FORBIDDEN = { ok: false, error: "Só um admin cancela um trabalho ou tira um trabalho de cancelado." } as const;
 
 /** Revalida a sessão a cada chamada: nunca confiar no cliente. */
 async function getTeamContext() {
@@ -83,6 +106,11 @@ async function findAccessibleJob(ctx: TeamContext, jobId: string) {
   if (!found) return null;
   const allowed = await canAccessJob(db, { jobId: found.id, userId: ctx.actor.id, isAdmin: ctx.isAdmin });
   return allowed ? found : null;
+}
+
+/** A troca de status mexe no cancelamento (entra ou sai de um status de cancelamento) sem ser admin. */
+function blocksCancellation(ctx: TeamContext, previous: { isCanceled: boolean } | null, next: { isCanceled: boolean }) {
+  return !ctx.isAdmin && (Boolean(previous?.isCanceled) || next.isCanceled);
 }
 
 function invalid(error: z.ZodError): JobActionResult {
@@ -128,6 +156,9 @@ export async function createJob(input: CreateJobInput): Promise<JobActionResult>
   ]);
   if (!targetClient) return { ok: false, error: "Cliente inválido.", fieldErrors: { clientId: ["Escolha um cliente ativo."] } };
   if (!status) return { ok: false, error: "Status inválido.", fieldErrors: { statusId: ["Escolha o status."] } };
+  if (status.isCanceled) {
+    return { ok: false, error: "Revise os campos destacados.", fieldErrors: { statusId: ["Um trabalho novo não começa cancelado."] } };
+  }
 
   // O id sai daqui para o trabalho, os funcionários e o histórico irem num lote só (atômico).
   const id = randomUUID();
@@ -215,6 +246,9 @@ export async function updateJob(input: UpdateJobInput): Promise<JobActionResult>
     changes.assignees = { from: currentAssignees.map((person) => person.name), to: people.map((person) => person.name) };
   }
   const statusChanged = status.id !== current.statusId;
+  if (statusChanged && blocksCancellation(ctx, currentStatus, status)) {
+    return { ok: false, error: "Revise os campos destacados.", fieldErrors: { statusId: [CANCEL_FORBIDDEN.error] } };
+  }
   if (statusChanged) changes.status = { from: currentStatus?.name ?? null, to: status.name };
   if (Object.keys(changes).length === 0) return { ok: true, message: "Nada para salvar.", pit: current.pit };
 
@@ -255,6 +289,7 @@ export async function updateJob(input: UpdateJobInput): Promise<JobActionResult>
   notifyAssignments({ job: updated, actor: ctx.actor, addedIds, removedIds });
   // Quem acabou de entrar já recebe "incluiu você", com o trabalho no status novo.
   if (statusChanged) notifyStatusChange({ job: updated, actor: ctx.actor, status, skipIds: addedIds });
+  if (statusChanged) trackCompletion(current.id, currentStatus, status);
 
   refresh();
   return { ok: true, message: `Trabalho #${current.pit} atualizado.`, pit: current.pit };
@@ -275,9 +310,12 @@ export async function setJobStatus(input: { jobId: string; statusId: string }): 
   if (!status) return { ok: false, error: "Status inválido." };
   if (status.id === current.statusId) return { ok: true, message: "O trabalho já está nesse status." };
 
+  const previous = await findJobStatusById(db, current.statusId);
+  if (blocksCancellation(ctx, previous, status)) return CANCEL_FORBIDDEN;
   await db.batch(statusChangeQueries(current.id, status, ctx.actor));
-  await auditStatusChange(ctx, current, status);
+  await auditStatusChange(ctx, current, previous, status);
   notifyStatusChange({ job: current, actor: ctx.actor, status });
+  trackCompletion(current.id, previous, status);
 
   refresh();
   return { ok: true, message: `#${current.pit}: ${status.name}.` };
@@ -293,10 +331,10 @@ function statusChangeQueries(jobId: string, status: JobStatusRecord, actor: { id
 
 async function auditStatusChange(
   ctx: TeamContext,
-  current: { id: string; pit: number; name: string; statusId: string },
+  current: { id: string; pit: number; name: string },
+  previous: JobStatusRecord | null,
   status: JobStatusRecord,
 ) {
-  const previous = await findJobStatusById(db, current.statusId);
   await recordAudit({
     action: "job.status_changed",
     actor: ctx.actor,
@@ -304,6 +342,12 @@ async function auditStatusChange(
     metadata: { changes: { status: { from: previous?.name ?? null, to: status.name } } },
     ...ctx.meta,
   });
+}
+
+/** Trabalho concluído (isJobCompletion: entrou num status que encerra; cancelar não conta): conquistas de quem está nele. */
+function trackCompletion(jobId: string, previous: JobStatusRecord | null, next: JobStatusRecord) {
+  if (!isJobCompletion(previous, next)) return;
+  achievementsAfter("trabalho concluído", (database) => onJobCompleted(database, { jobId }));
 }
 
 /**
@@ -327,6 +371,8 @@ export async function moveSheetJob(input: MoveSheetJobInput): Promise<JobActionR
   if (!current) return JOB_NOT_FOUND;
   if (statusId && !status) return { ok: false, error: "Status inválido." };
   const newStatus = status && status.id !== current.statusId ? status : null;
+  const previous = newStatus ? await findJobStatusById(db, current.statusId) : null;
+  if (newStatus && blocksCancellation(ctx, previous, newStatus)) return CANCEL_FORBIDDEN;
 
   const neighbors = [beforeId, afterId].filter((id): id is string => Boolean(id));
   let positions = await listSheetPositions(db, ownerId, [jobId, ...neighbors]);
@@ -353,8 +399,9 @@ export async function moveSheetJob(input: MoveSheetJobInput): Promise<JobActionR
   const [first, ...rest] = queries;
   await db.batch([first, ...rest]);
   if (newStatus) {
-    await auditStatusChange(ctx, current, newStatus);
+    await auditStatusChange(ctx, current, previous, newStatus);
     notifyStatusChange({ job: current, actor: ctx.actor, status: newStatus });
+    trackCompletion(current.id, previous, newStatus);
   }
 
   refresh();
@@ -425,7 +472,9 @@ export async function sendMessage(input: SendMessageInput): Promise<JobActionRes
 
   const parsed = sendMessageSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
-  const { jobId, body, attachmentIds } = parsed.data;
+  const { jobId, attachmentIds } = parsed.data;
+  // "/party" e companhia ficam guardados sempre do mesmo jeito.
+  const body = normalizeMessageBody(parsed.data.body);
   const current = await findAccessibleJob(ctx, jobId);
   if (!current) return JOB_NOT_FOUND;
 
@@ -454,6 +503,16 @@ export async function sendMessage(input: SendMessageInput): Promise<JobActionRes
   ]);
   await markRead(db, current.id, ctx.actor.id);
   notifyJobMessage({ job: current, actor: ctx.actor, body, attachmentCount: attachmentIds.length, mentionIds: mentions });
+  achievementsAfter("mensagem do trabalho", (database) =>
+    onMessageSent(database, {
+      kind: "job",
+      authorId: ctx.actor.id,
+      body,
+      mentions,
+      attachments: attachmentIds.length,
+      pastedImage: parsed.data.pastedImage,
+    }),
+  );
 
   refresh();
   return { ok: true, message: "Mensagem enviada." };
@@ -487,9 +546,89 @@ export async function deleteMessage(input: { messageId: string }): Promise<JobAc
     metadata: { author: found.authorName, attachments: attachments.length },
     ...ctx.meta,
   });
+  achievementsAfter("mensagem apagada", (database) =>
+    onMessageDeleted(database, { authorId: found.authorId, actorId: ctx.actor.id }),
+  );
 
   refresh();
   return { ok: true, message: "Mensagem excluída." };
+}
+
+/** Mensagem de um trabalho que quem pede pode acessar (null para os outros). */
+async function findAccessibleMessage(ctx: TeamContext, messageId: string) {
+  const [message] = await db.select().from(jobMessage).where(eq(jobMessage.id, messageId)).limit(1);
+  const current = message ? await findAccessibleJob(ctx, message.jobId) : null;
+  return message && current ? { message, job: current } : null;
+}
+
+/** Reações e fixadas mudaram: quem está com o trabalho aberto recarrega a conversa. */
+async function publishMessagesUpdate(jobId: string, actorId: string) {
+  const people = await listMentionableIds(db, jobId);
+  publishRealtimeAfter([...new Set([actorId, ...people])], { type: "job.messages", jobId });
+}
+
+const MESSAGE_NOT_FOUND = { ok: false, error: "Mensagem não encontrada." } as const;
+
+/** Liga ou desliga uma reação. Devolve as reações da mensagem como ficaram. */
+export async function reactToJobMessage(input: { messageId: string; emoji: string }): Promise<MessageUpdateResult> {
+  const ctx = await getTeamContext();
+  if (!ctx) return UNAUTHENTICATED;
+  const parsed = messageReactionSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Reação inválida." };
+  const target = await findAccessibleMessage(ctx, parsed.data.messageId);
+  if (!target) return MESSAGE_NOT_FOUND;
+
+  const added = await toggleReaction(db, "job", { messageId: target.message.id, userId: ctx.actor.id, emoji: parsed.data.emoji });
+  const { reactions } = await listMessageExtras(db, "job", [target.message.id], ctx.actor.id);
+  await publishMessagesUpdate(target.job.id, ctx.actor.id);
+  if (added) {
+    achievementsAfter("reação", (database) =>
+      onReactionAdded(database, { kind: "job", messageId: target.message.id, userId: ctx.actor.id }),
+    );
+  }
+  refresh();
+  return { ok: true, reactions: toReactionViews(reactions.get(target.message.id) ?? [], ctx.actor.id) };
+}
+
+/** Fixa no topo da conversa do trabalho (para todo mundo dele) ou desafixa. */
+export async function setJobMessagePinned(input: { messageId: string; pinned: boolean }): Promise<MessageUpdateResult> {
+  const ctx = await getTeamContext();
+  if (!ctx) return UNAUTHENTICATED;
+  const parsed = messagePinSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Mensagem inválida." };
+  const target = await findAccessibleMessage(ctx, parsed.data.messageId);
+  if (!target) return MESSAGE_NOT_FOUND;
+  const { pinned } = parsed.data;
+  if (pinned && !target.message.pinnedAt) {
+    if ((await countPinnedMessages(db, "job", target.job.id)) >= PINNED_MESSAGES_MAX) {
+      return { ok: false, error: `Já há ${PINNED_MESSAGES_MAX} mensagens fixadas. Desafixe uma antes.` };
+    }
+  }
+
+  await setMessagePinned(db, "job", target.message.id, pinned ? ctx.actor : null);
+  await publishMessagesUpdate(target.job.id, ctx.actor.id);
+  if (pinned && !target.message.pinnedAt) {
+    achievementsAfter("mensagem fixada", (database) =>
+      onMessagePinned(database, { kind: "job", messageId: target.message.id, actorId: ctx.actor.id }),
+    );
+  }
+  refresh();
+  return { ok: true, pinned };
+}
+
+/** Guarda nas favoritas de quem pede (só ela vê), ou tira. */
+export async function toggleJobMessageFavorite(input: { messageId: string }): Promise<MessageUpdateResult> {
+  const ctx = await getTeamContext();
+  if (!ctx) return UNAUTHENTICATED;
+  const parsed = messageFavoriteSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Mensagem inválida." };
+  const target = await findAccessibleMessage(ctx, parsed.data.messageId);
+  if (!target) return MESSAGE_NOT_FOUND;
+
+  const favorite = await toggleFavorite(db, "job", { messageId: target.message.id, userId: ctx.actor.id });
+  if (favorite) achievementsAfter("favorita", (database) => onMessageFavorited(database, { userId: ctx.actor.id }));
+  refresh();
+  return { ok: true, favorite };
 }
 
 /** Anexo enviado e tirado do rascunho antes de mandar a mensagem: sai do CDN. */

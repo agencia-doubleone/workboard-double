@@ -71,6 +71,27 @@
       "when": 1791654904673,
       "tag": "0009_whiteboards",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791659754779,
+      "tag": "0010_message_extras",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791694358826,
+      "tag": "0011_achievements",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791752906061,
+      "tag": "0012_canceled_status",
+      "breakpoints": true
     }
   ]
 }

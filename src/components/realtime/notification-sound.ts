@@ -9,7 +9,7 @@ import { getPreferences } from "@/components/preferences/preferences-store";
 // O navegador só libera áudio numa aba depois de alguma interação nela (clique
 // ou tecla); abas que nunca foram tocadas ficam de fora da disputa.
 
-export type SoundKind = "message" | "notification";
+export type SoundKind = "message" | "notification" | "unlock";
 
 type Note = { frequency: number; start: number; duration: number };
 
@@ -23,6 +23,12 @@ const SOUNDS: Record<SoundKind | "achievement", Note[]> = {
   notification: [
     { frequency: 1047, start: 0, duration: 0.18 },
     { frequency: 1319, start: 0.12, duration: 0.3 },
+  ],
+  // Conquista desbloqueada: três notas rápidas e brilhantes, como nos videogames.
+  unlock: [
+    { frequency: 988, start: 0, duration: 0.1 },
+    { frequency: 1319, start: 0.08, duration: 0.1 },
+    { frequency: 1976, start: 0.16, duration: 0.42 },
   ],
   // Trabalho concluído: arpejo subindo, com a última nota mais longa ("conquista").
   achievement: [
@@ -38,6 +44,7 @@ const SOUNDS: Record<SoundKind | "achievement", Note[]> = {
 const WAVES: Record<keyof typeof SOUNDS, OscillatorType> = {
   message: "sine",
   notification: "sine",
+  unlock: "triangle",
   achievement: "triangle",
 };
 

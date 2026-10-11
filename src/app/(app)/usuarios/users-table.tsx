@@ -187,6 +187,7 @@ export function UsersTable({ users, currentUserId, emailEnabled }: UsersTablePro
           key={dialog.key}
           dialog={dialog}
           isSelf={dialog.user?.id === currentUserId}
+          emailEnabled={emailEnabled}
           onOpenChange={handleOpenChange}
         />
       )}
@@ -269,7 +270,7 @@ function UserTableRow({
               disabled={!emailEnabled || !user.active}
             >
               <MailIcon />
-              {emailEnabled ? "Enviar link de redefinição" : "Link por e-mail (em breve)"}
+              {emailEnabled ? "Enviar link de redefinição" : "Link por e-mail (sem SMTP)"}
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => onAction("sessions", user)}
@@ -352,15 +353,19 @@ function StatusSwitch({
 function UserDialogs({
   dialog,
   isSelf,
+  emailEnabled,
   onOpenChange,
 }: {
   dialog: DialogState;
   isSelf: boolean;
+  emailEnabled: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const { kind, user, open } = dialog;
 
-  if (kind === "create") return <UserFormDialog open={open} onOpenChange={onOpenChange} />;
+  if (kind === "create") {
+    return <UserFormDialog open={open} onOpenChange={onOpenChange} emailEnabled={emailEnabled} />;
+  }
   if (!user) return null;
 
   switch (kind) {

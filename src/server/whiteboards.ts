@@ -1,7 +1,7 @@
 import { and, count, desc, eq, exists, gt, ilike, inArray, isNotNull, or, sql, type SQL } from "drizzle-orm";
 
 import type { Database } from "@/db";
-import { job, jobAssignee, user, whiteboard, whiteboardElement, whiteboardMember } from "@/db/schema";
+import { job, jobAssignee, jobStatus, user, whiteboard, whiteboardElement, whiteboardMember } from "@/db/schema";
 import type { StoredElement, WhiteboardScope } from "@/lib/whiteboards";
 
 // Consultas dos quadros brancos (sem "server-only": rodam também nos scripts de
@@ -17,7 +17,7 @@ import type { StoredElement, WhiteboardScope } from "@/lib/whiteboards";
 export type WhiteboardViewer = { id: string; isAdmin: boolean };
 
 /** Condição SQL de "o quadro aparece para essa pessoa" (mesma regra de canAccessWhiteboard). */
-function visibleTo(viewer: WhiteboardViewer): SQL {
+export function whiteboardVisibleTo(viewer: WhiteboardViewer): SQL {
   const isMember = exists(
     sql`(select 1 from ${whiteboardMember} where ${whiteboardMember.whiteboardId} = ${whiteboard.id} and ${whiteboardMember.userId} = ${viewer.id})`,
   );
@@ -92,7 +92,7 @@ export type WhiteboardListFilters = {
 
 export async function listWhiteboards(database: Database, filters: WhiteboardListFilters) {
   const { viewer } = filters;
-  const conditions = [visibleTo(viewer)];
+  const conditions = [whiteboardVisibleTo(viewer)];
   if (filters.search) {
     const term = `%${filters.search.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
     conditions.push(or(ilike(whiteboard.title, term), ilike(job.name, term))!);
@@ -245,6 +245,16 @@ export async function saveWhiteboardElements(
   return saved.length;
 }
 
+/** Quais destes elementos já estão gravados no quadro (para saber o que é novo). */
+export async function findSavedElementIds(database: Database, whiteboardId: string, ids: string[]) {
+  if (ids.length === 0) return new Set<string>();
+  const rows = await database
+    .select({ id: whiteboardElement.id })
+    .from(whiteboardElement)
+    .where(and(eq(whiteboardElement.whiteboardId, whiteboardId), inArray(whiteboardElement.id, ids)));
+  return new Set(rows.map((row) => row.id));
+}
+
 /** null: o quadro ficou em branco. */
 export async function saveWhiteboardPreview(database: Database, whiteboardId: string, dataUrl: string | null) {
   await database
@@ -279,15 +289,17 @@ export async function listWhiteboardImages(database: Database) {
     );
 }
 
-/** Trabalhos que dá para vincular a um quadro: os ativos (para quem não é admin, só os seus). */
+/** Trabalhos que dá para vincular a um quadro: os ativos e não cancelados (para quem não é admin, só os seus). */
 export async function listLinkableJobs(database: Database, viewer: WhiteboardViewer) {
   const isAssignee = exists(
     sql`(select 1 from ${jobAssignee} where ${jobAssignee.jobId} = ${job.id} and ${jobAssignee.userId} = ${viewer.id})`,
   );
+  const linkable = and(eq(job.active, true), eq(jobStatus.isCanceled, false));
   return database
     .select({ id: job.id, pit: job.pit, name: job.name })
     .from(job)
-    .where(viewer.isAdmin ? eq(job.active, true) : and(eq(job.active, true), isAssignee))
+    .innerJoin(jobStatus, eq(jobStatus.id, job.statusId))
+    .where(viewer.isAdmin ? linkable : and(linkable, isAssignee))
     .orderBy(desc(job.pit))
     .limit(500);
 }

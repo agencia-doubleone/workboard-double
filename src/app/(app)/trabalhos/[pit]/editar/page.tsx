@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { PageHeader } from "@/components/shell/page-header";
 import { PageSkeleton } from "@/components/shell/page-skeleton";
 import { db } from "@/db";
+import { selectableStatuses } from "@/lib/jobs";
 import { requireSession } from "@/lib/session";
 import { findJobByPit, listClientOptions, listJobStatuses, listTeamMembers } from "@/server/jobs";
 import { isMediaConfigured, resolveMediaUrl } from "@/server/media";
@@ -45,7 +46,8 @@ async function EditJobContent({ params }: { params: PageProps<"/trabalhos/[pit]/
       />
       <JobForm
         initial={toFormValues(found)}
-        statuses={statuses.map(toStatusOption)}
+        // Quem não é admin não cancela nem tira de cancelado.
+        statuses={selectableStatuses(statuses.map(toStatusOption), found.job.statusId, user.role === "admin")}
         clients={clients.map((item) => ({ id: item.id, name: item.name, logoUrl: resolveMediaUrl(item.logoKey) }))}
         people={people.map(toPersonView)}
         uploadsEnabled={isMediaConfigured()}

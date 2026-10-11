@@ -1,3 +1,5 @@
+import { after } from "next/server";
+
 import { db } from "@/db";
 import { env } from "@/env";
 import { createAuth } from "./auth-config";
@@ -8,6 +10,7 @@ export const auth = createAuth({
   database: db,
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
+  runInBackground: (task) => after(task),
 });
 
 export type Session = typeof auth.$Infer.Session;

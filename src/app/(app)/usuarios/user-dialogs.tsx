@@ -44,6 +44,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { isRole, ROLE_LABELS, ROLES, type Role } from "@/lib/users";
 import {
@@ -87,7 +88,9 @@ function useActionForm(onSuccess: (result: ActionSuccess) => void) {
     startTransition(async () => {
       const result = await action(parsed.data);
       if (result.ok) {
-        toast.success(result.message);
+        // Conta criada, mas as boas-vindas não saíram: aviso, não sucesso puro.
+        if (result.welcomeEmail === "failed") toast.warning(result.message);
+        else toast.success(result.message);
         onSuccess(result);
         return;
       }
@@ -123,17 +126,27 @@ export function UserFormDialog({
   onOpenChange,
   user,
   isSelf = false,
-}: DialogProps & { user?: UserRow; isSelf?: boolean }) {
+  emailEnabled = false,
+}: DialogProps & {
+  user?: UserRow;
+  isSelf?: boolean;
+  /** Envio de e-mail configurado: ao criar, dá para mandar o acesso por e-mail. */
+  emailEnabled?: boolean;
+}) {
   const editing = Boolean(user);
   const [name, setName] = useState(user?.name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
   const [role, setRole] = useState<Role>(user?.role ?? "user");
   const [password, setPassword] = useState("");
+  const [sendWelcome, setSendWelcome] = useState(true);
   // Senha gerada pelo servidor: exibida uma única vez, depois de criar.
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
+  const [welcomeSent, setWelcomeSent] = useState(false);
   const { isPending, error, fieldErrors, submit } = useActionForm((result) => {
-    if (result.generatedPassword) setGeneratedPassword(result.generatedPassword);
-    else onOpenChange(false);
+    if (result.generatedPassword) {
+      setGeneratedPassword(result.generatedPassword);
+      setWelcomeSent(result.welcomeEmail === "sent");
+    } else onOpenChange(false);
   });
 
   function handleSubmit(event: React.FormEvent) {
@@ -141,7 +154,7 @@ export function UserFormDialog({
     if (user) {
       submit(updateUserSchema, { userId: user.id, name, email, role }, updateUser);
     } else {
-      submit(createUserSchema, { name, email, role, password }, createUser);
+      submit(createUserSchema, { name, email, role, password, sendWelcome: emailEnabled && sendWelcome }, createUser);
     }
   }
 
@@ -153,8 +166,9 @@ export function UserFormDialog({
           <DialogHeader>
             <DialogTitle>Usuário criado</DialogTitle>
             <DialogDescription>
-              Esta é a senha de acesso de {name.trim()}. Copie agora e repasse por
-              um canal seguro: ela não será exibida novamente.
+              {welcomeSent
+                ? `Também mandamos o acesso para o e-mail de ${name.trim()}. A senha fica aqui só desta vez, caso precise repassar.`
+                : `Esta é a senha de acesso de ${name.trim()}. Copie agora e repasse por um canal seguro: ela não será exibida novamente.`}
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
@@ -262,6 +276,20 @@ export function UserFormDialog({
                   Em branco, uma senha forte é gerada e mostrada uma vez após criar.
                 </FieldDescription>
                 <FieldError>{fieldErrors.password?.[0]}</FieldError>
+              </Field>
+            )}
+            {!editing && emailEnabled && (
+              <Field orientation="horizontal">
+                <Switch
+                  id="user-welcome"
+                  checked={sendWelcome}
+                  onCheckedChange={setSendWelcome}
+                  disabled={isPending}
+                />
+                <div className="grid gap-0.5">
+                  <FieldLabel htmlFor="user-welcome">Enviar o acesso por e-mail</FieldLabel>
+                  <FieldDescription>Boas-vindas com o e-mail, a senha e o link para entrar.</FieldDescription>
+                </div>
               </Field>
             )}
           </FieldGroup>

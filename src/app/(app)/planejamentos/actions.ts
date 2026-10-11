@@ -29,6 +29,12 @@ import {
   type SavePostInput,
   type UpdatePlanningInput,
 } from "@/lib/validations/planning";
+import {
+  achievementsAfter,
+  onPlanningMembersAdded,
+  onPlanningMonthStatus,
+  onPlanningPostsAdded,
+} from "@/server/achievements";
 import { getRequestMeta, recordAudit } from "@/server/audit";
 import { findClientById } from "@/server/clients";
 import { filterActiveUserIds } from "@/server/jobs";
@@ -47,6 +53,7 @@ import { richTextExcerpt, sanitizeRichText } from "@/server/rich-text";
 // (notifyPlanningMembers), e as mudanças de status avisam os responsáveis
 // (notifyPlanningStatus). Na auditoria entram criação, edição, exclusão,
 // status do mês e importação (status de cada post não: é o dia a dia).
+// Responsáveis, status do mês e posts novos contam para as conquistas.
 
 export type PlanningActionResult =
   | { ok: true; message: string; slug?: string }
@@ -121,6 +128,9 @@ export async function createPlanning(input: CreatePlanningInput): Promise<Planni
     actor: ctx.actor,
     userIds: memberIds,
   });
+  if (memberIds.length) {
+    achievementsAfter("responsáveis", (database) => onPlanningMembersAdded(database, { userIds: memberIds }));
+  }
   return { ok: true, message: `Planejamento de ${target.name} criado.`, slug: target.slug };
 }
 
@@ -165,6 +175,7 @@ export async function updatePlanning(input: UpdatePlanningInput): Promise<Planni
   ]);
   await recordAudit({ action: "planning.updated", actor: ctx.actor, entity: planningEntity(found), metadata: { changes }, ...ctx.meta });
   notifyPlanningMembers({ planning: notifyTarget(found), actor: ctx.actor, userIds: added });
+  if (added.length) achievementsAfter("responsáveis", (database) => onPlanningMembersAdded(database, { userIds: added }));
 
   refresh();
   return { ok: true, message: "Planejamento atualizado.", slug: found.client.slug };
@@ -197,7 +208,12 @@ export async function setMonthStatus(input: { planningId: string; month: string;
 
   const current = await ensurePlanningMonth(db, found.planning.id, month);
   if (current.status === status) return { ok: true, message: "O mês já está nesse status." };
-  await db.update(planningMonth).set({ status, statusChangedAt: new Date() }).where(eq(planningMonth.id, current.id));
+  const now = new Date();
+  await db
+    .update(planningMonth)
+    // "Ajustes pedidos" fica marcado no mês (a conquista "Aprovado de Primeira" olha isso).
+    .set({ status, statusChangedAt: now, ...(status === "ajustes" ? { adjustmentsRequestedAt: now } : {}) })
+    .where(eq(planningMonth.id, current.id));
   await recordAudit({
     action: "planning.month_status_changed",
     actor: ctx.actor,
@@ -206,6 +222,16 @@ export async function setMonthStatus(input: { planningId: string; month: string;
     ...ctx.meta,
   });
   notifyPlanningStatus({ planning: notifyTarget(found), actor: ctx.actor, month, status });
+  achievementsAfter("status do mês", (database) =>
+    onPlanningMonthStatus(database, {
+      planningId: found.planning.id,
+      monthId: current.id,
+      month,
+      previous: current.status,
+      next: status,
+      adjustmentsRequestedAt: current.adjustmentsRequestedAt,
+    }),
+  );
 
   refresh();
   return { ok: true, message: `${formatMonth(month)}: ${PLANNING_STATUSES[status].label}.` };
@@ -269,6 +295,17 @@ export async function importPosts(input: ImportPostsInput): Promise<PlanningActi
     metadata: { month: data.month, posts: data.posts.length, replaced: data.mode === "replace" },
     ...ctx.meta,
   });
+  if (data.posts.length) {
+    achievementsAfter("posts importados", (database) =>
+      onPlanningPostsAdded(database, {
+        planningId: found.planning.id,
+        monthId: current.id,
+        month: data.month,
+        actorId: ctx.actor.id,
+        imported: true,
+      }),
+    );
+  }
 
   refresh();
   const count = data.posts.length;
@@ -303,6 +340,9 @@ export async function savePost(input: SavePostInput): Promise<PlanningActionResu
     ...fields,
     ...(status ? { status } : {}),
   });
+  achievementsAfter("post criado", (database) =>
+    onPlanningPostsAdded(database, { planningId: found.planning.id, monthId: current.id, month, actorId: ctx.actor.id, imported: false }),
+  );
   refresh();
   return { ok: true, message: "Post criado." };
 }

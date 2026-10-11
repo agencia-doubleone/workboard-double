@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { db } from "@/db";
 import { excerpt, notificationHref, notificationText, type NotificationStatus } from "@/lib/notifications";
 import { splitMentions } from "@/lib/jobs";
+import { messageEffectOf, messageEffectText } from "@/lib/messages";
 import type { PlanningStatus } from "@/lib/planning";
 import type { RealtimeNotificationEvent } from "@/lib/realtime/protocol";
 import { filterActiveUserIds, findUserNames, listMentionableIds } from "@/server/jobs";
@@ -125,8 +126,10 @@ export function notifyJobMessage(input: {
       .map((part) => (part.type === "mention" ? `@${names.get(part.userId) ?? "alguém"}` : part.text))
       .join("");
     const files = input.attachmentCount;
-    const preview =
-      excerpt(text) || (files === 1 ? "Enviou um arquivo." : files > 1 ? `Enviou ${files} arquivos.` : "");
+    const effect = messageEffectOf(input.body, files);
+    const preview = effect
+      ? messageEffectText(effect)
+      : excerpt(text) || (files === 1 ? "Enviou um arquivo." : files > 1 ? `Enviou ${files} arquivos.` : "");
     const data = { ...jobData(job), excerpt: preview };
     const mentioned = new Set(input.mentionIds);
 

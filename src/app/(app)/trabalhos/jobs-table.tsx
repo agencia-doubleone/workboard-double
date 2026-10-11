@@ -291,7 +291,14 @@ function JobTableRow({ row, statuses, isAdmin, onToggleActive, onDelete, sortabl
         <AssigneeAvatars people={row.assignees} />
       </TableCell>
       <TableCell className="py-1.5" onClick={(event) => event.stopPropagation()}>
-        <StatusSelect jobId={row.id} value={row.statusId} statuses={statuses} compact />
+        <StatusSelect
+          jobId={row.id}
+          jobLabel={`#${row.pit} ${row.name}`}
+          value={row.statusId}
+          statuses={statuses}
+          isAdmin={isAdmin}
+          compact
+        />
       </TableCell>
       <TableCell className="hidden tabular-nums sm:table-cell">
         <DueDate dueDate={row.dueDate} overdue={row.overdue} />

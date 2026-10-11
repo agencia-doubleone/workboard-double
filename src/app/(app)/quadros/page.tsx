@@ -91,7 +91,7 @@ async function WhiteboardsContent({ searchParams }: { searchParams: PageProps<"/
           <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {items.map((item) => (
               <li key={item.id} className="min-w-0">
-                <WhiteboardCard board={toCardView(item, now)} />
+                <WhiteboardCard board={toCardView(item, now, viewer)} />
               </li>
             ))}
           </ul>

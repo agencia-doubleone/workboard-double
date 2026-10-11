@@ -5,6 +5,7 @@ import { Suspense } from "react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { isEmailConfigured } from "@/lib/email";
 import { AuthHeading } from "../auth-heading";
 import { ResetPasswordForm } from "./reset-password-form";
 
@@ -33,16 +34,28 @@ async function ResetPasswordContent({
 }
 
 function InvalidLink() {
+  const canRequest = isEmailConfigured();
   return (
     <div className="flex flex-col gap-7">
       <AuthHeading
         icon={<LinkIcon className="size-7 text-muted-foreground" />}
         title="Link inválido ou expirado"
-        description="Este link de redefinição já foi usado ou passou da validade. Peça um novo link a um administrador."
+        description={
+          canRequest
+            ? "Este link de redefinição já foi usado ou passou da validade. Peça um novo."
+            : "Este link de redefinição já foi usado ou passou da validade. Peça um novo link a um administrador."
+        }
       />
-      <Link href="/login" className={buttonVariants({ variant: "outline" })}>
-        Ir para o login
-      </Link>
+      <div className="flex flex-col gap-2">
+        {canRequest && (
+          <Link href="/esqueci-a-senha" className={buttonVariants()}>
+            Pedir um novo link
+          </Link>
+        )}
+        <Link href="/login" className={buttonVariants({ variant: "outline" })}>
+          Ir para o login
+        </Link>
+      </div>
     </div>
   );
 }

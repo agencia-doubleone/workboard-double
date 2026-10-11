@@ -16,6 +16,8 @@ export type WhiteboardCardView = {
   previewUrl: string | null;
   updated: { label: string; absolute: string };
   updatedBy: string | null;
+  /** Quem vê pode excluir (o dono; nos coletivos, também os admins). */
+  canDelete: boolean;
 };
 
 /** O que o formulário de criar/editar edita. */

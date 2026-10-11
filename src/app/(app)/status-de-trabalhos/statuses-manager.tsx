@@ -1,10 +1,13 @@
 "use client";
 
+import { closestCenter, DndContext, type DragEndEvent } from "@dnd-kit/core";
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   AlertCircleIcon,
-  ArrowDownIcon,
-  ArrowUpIcon,
+  BanIcon,
   CheckCircle2Icon,
+  GripVerticalIcon,
   Loader2Icon,
   MoreHorizontalIcon,
   PencilIcon,
@@ -12,12 +15,11 @@ import {
   StarIcon,
   Trash2Icon,
 } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { ColorField } from "@/components/color-field";
-import { Hint } from "@/components/hint";
 import { JobStatusBadge } from "@/components/job-status-badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -50,11 +52,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import { createJobStatusSchema } from "@/lib/validations/jobs";
+import { sheetAccessibility, useSheetSensors, verticalOnly } from "../trabalhos/sheet-dnd";
 import {
   createJobStatus,
   deleteJobStatus,
-  moveJobStatus,
+  reorderJobStatuses,
   setDefaultJobStatus,
   updateJobStatus,
   type StatusActionResult,
@@ -67,6 +71,7 @@ export type StatusRow = {
   backgroundColor: string;
   isDefault: boolean;
   isFinal: boolean;
+  isCanceled: boolean;
   jobCount: number;
 };
 
@@ -89,16 +94,48 @@ function useAction() {
 }
 
 export function StatusesManager({ rows }: { rows: StatusRow[] }) {
+  const dndId = useId();
+  const sensors = useSheetSensors();
   const [editing, setEditing] = useState<StatusRow | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [formKey, setFormKey] = useState(0);
-  const { isPending, run } = useAction();
+  const { run } = useAction();
+  const [, startReorder] = useTransition();
+  // Ordem na tela: muda na hora ao soltar e volta à do servidor quando ela chega.
+  const [items, setItems] = useState(rows);
+  const [serverRows, setServerRows] = useState(rows);
+  if (rows !== serverRows) {
+    setServerRows(rows);
+    setItems(rows);
+  }
 
   function openForm(row: StatusRow | null) {
     setEditing(row);
     setFormKey((key) => key + 1);
     setFormOpen(true);
   }
+
+  function handleDragEnd({ active, over }: DragEndEvent) {
+    if (!over || active.id === over.id) return;
+    const from = items.findIndex((row) => row.id === active.id);
+    const to = items.findIndex((row) => row.id === over.id);
+    if (from < 0 || to < 0) return;
+    const next = arrayMove(items, from, to);
+    setItems(next);
+    startReorder(async () => {
+      const result = await reorderJobStatuses({ statusId: String(active.id), orderedIds: next.map((row) => row.id) });
+      if (!result.ok) {
+        toast.error(result.error);
+        setItems(rows);
+      }
+    });
+  }
+
+  const rowProps = {
+    onEdit: openForm,
+    onSetDefault: (row: StatusRow) => run(() => setDefaultJobStatus({ statusId: row.id })),
+    onDelete: (row: StatusRow) => run(() => deleteJobStatus({ statusId: row.id })),
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -110,109 +147,132 @@ export function StatusesManager({ rows }: { rows: StatusRow[] }) {
       </div>
 
       <TableFrame>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-20">Ordem</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="hidden sm:table-cell">Comportamento</TableHead>
-              <TableHead className="hidden text-right sm:table-cell">Trabalhos</TableHead>
-              <TableHead className="w-12">
-                <span className="sr-only">Ações</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row, index) => (
-              <TableRow key={row.id}>
-                <TableCell>
-                  <div className="flex gap-0.5">
-                    <Hint label="Subir">
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        aria-label={`Subir ${row.name}`}
-                        disabled={index === 0 || isPending}
-                        onClick={() => run(() => moveJobStatus({ statusId: row.id, direction: "up" }))}
-                      >
-                        <ArrowUpIcon />
-                      </Button>
-                    </Hint>
-                    <Hint label="Descer">
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        aria-label={`Descer ${row.name}`}
-                        disabled={index === rows.length - 1 || isPending}
-                        onClick={() => run(() => moveJobStatus({ statusId: row.id, direction: "down" }))}
-                      >
-                        <ArrowDownIcon />
-                      </Button>
-                    </Hint>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <JobStatusBadge name={row.name} textColor={row.textColor} backgroundColor={row.backgroundColor} />
-                </TableCell>
-                <TableCell className="hidden sm:table-cell">
-                  <div className="flex flex-wrap gap-1.5">
-                    {row.isDefault && (
-                      <Badge variant="soft">
-                        <StarIcon data-icon="inline-start" />
-                        Padrão para novos
-                      </Badge>
-                    )}
-                    {row.isFinal && (
-                      <Badge variant="outline">
-                        <CheckCircle2Icon data-icon="inline-start" />
-                        Encerra o trabalho
-                      </Badge>
-                    )}
-                    {!row.isDefault && !row.isFinal && <span className="text-muted-foreground">—</span>}
-                  </div>
-                </TableCell>
-                <TableCell className="hidden text-right tabular-nums sm:table-cell">{row.jobCount}</TableCell>
-                <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={<Button variant="ghost" size="icon-sm" aria-label={`Ações de ${row.name}`} />}
-                    >
-                      <MoreHorizontalIcon />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-52">
-                      <DropdownMenuItem onClick={() => openForm(row)}>
-                        <PencilIcon />
-                        Editar
-                      </DropdownMenuItem>
-                      {!row.isDefault && !row.isFinal && (
-                        <DropdownMenuItem onClick={() => run(() => setDefaultJobStatus({ statusId: row.id }))}>
-                          <StarIcon />
-                          Usar como padrão
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        variant="destructive"
-                        disabled={row.isDefault}
-                        onClick={() => run(() => deleteJobStatus({ statusId: row.id }))}
-                      >
-                        <Trash2Icon />
-                        Excluir
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <DndContext
+          id={dndId}
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          modifiers={[verticalOnly]}
+          onDragEnd={handleDragEnd}
+          accessibility={sheetAccessibility((id) => items.find((row) => row.id === id)?.name ?? "", "status")}
+        >
+          <SortableContext items={items.map((row) => row.id)} strategy={verticalListSortingStrategy}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-8 pr-0">
+                    <span className="sr-only">Ordem</span>
+                  </TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="hidden sm:table-cell">Comportamento</TableHead>
+                  <TableHead className="hidden text-right sm:table-cell">Trabalhos</TableHead>
+                  <TableHead className="w-12">
+                    <span className="sr-only">Ações</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map((row) => (
+                  <SortableStatusRow key={row.id} row={row} {...rowProps} />
+                ))}
+              </TableBody>
+            </Table>
+          </SortableContext>
+        </DndContext>
       </TableFrame>
       <p className="text-xs text-muted-foreground">
-        Só dá para excluir um status sem trabalhos. O padrão não pode encerrar o trabalho.
+        Arraste pela alça para mudar a ordem. Só dá para excluir um status sem trabalhos. O padrão não pode encerrar nem
+        cancelar o trabalho.
       </p>
 
       <StatusFormDialog key={formKey} open={formOpen} onOpenChange={setFormOpen} editing={editing} />
     </div>
+  );
+}
+
+type StatusRowProps = {
+  row: StatusRow;
+  onEdit: (row: StatusRow) => void;
+  onSetDefault: (row: StatusRow) => void;
+  onDelete: (row: StatusRow) => void;
+};
+
+/** Linha arrastável: a alça (⋮⋮) move; o resto da linha fica como estava. */
+function SortableStatusRow({ row, onEdit, onSetDefault, onDelete }: StatusRowProps) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    id: row.id,
+  });
+
+  return (
+    <TableRow
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={cn(isDragging && "relative z-10 bg-card shadow-overlay hover:bg-card")}
+    >
+      <TableCell className="w-8 py-1.5 pr-0">
+        <button
+          ref={setActivatorNodeRef}
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label={`Mover ${row.name}`}
+          className="flex size-7 cursor-grab items-center justify-center rounded-md text-muted-foreground/60 outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 active:cursor-grabbing"
+        >
+          <GripVerticalIcon className="size-4" />
+        </button>
+      </TableCell>
+      <TableCell>
+        <JobStatusBadge name={row.name} textColor={row.textColor} backgroundColor={row.backgroundColor} />
+      </TableCell>
+      <TableCell className="hidden sm:table-cell">
+        <div className="flex flex-wrap gap-1.5">
+          {row.isDefault && (
+            <Badge variant="soft">
+              <StarIcon data-icon="inline-start" />
+              Padrão para novos
+            </Badge>
+          )}
+          {row.isCanceled ? (
+            <Badge variant="destructive">
+              <BanIcon data-icon="inline-start" />
+              Cancela o trabalho
+            </Badge>
+          ) : (
+            row.isFinal && (
+              <Badge variant="outline">
+                <CheckCircle2Icon data-icon="inline-start" />
+                Encerra o trabalho
+              </Badge>
+            )
+          )}
+          {!row.isDefault && !row.isFinal && <span className="text-muted-foreground">—</span>}
+        </div>
+      </TableCell>
+      <TableCell className="hidden text-right tabular-nums sm:table-cell">{row.jobCount}</TableCell>
+      <TableCell className="text-right">
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Ações de ${row.name}`} />}>
+            <MoreHorizontalIcon />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuItem onClick={() => onEdit(row)}>
+              <PencilIcon />
+              Editar
+            </DropdownMenuItem>
+            {!row.isDefault && !row.isFinal && (
+              <DropdownMenuItem onClick={() => onSetDefault(row)}>
+                <StarIcon />
+                Usar como padrão
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" disabled={row.isDefault} onClick={() => onDelete(row)}>
+              <Trash2Icon />
+              Excluir
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -229,13 +289,14 @@ function StatusFormDialog({
   const [textColor, setTextColor] = useState(editing?.textColor ?? "#ffffff");
   const [backgroundColor, setBackgroundColor] = useState(editing?.backgroundColor ?? "#2563eb");
   const [isFinal, setIsFinal] = useState(editing?.isFinal ?? false);
+  const [isCanceled, setIsCanceled] = useState(editing?.isCanceled ?? false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [isPending, startTransition] = useTransition();
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    const values = { name, textColor, backgroundColor, isFinal };
+    const values = { name, textColor, backgroundColor, isFinal: isFinal || isCanceled, isCanceled };
     const parsed = createJobStatusSchema.safeParse(values);
     if (!parsed.success) {
       setError(null);
@@ -322,16 +383,34 @@ function StatusFormDialog({
             <Field orientation="horizontal">
               <Switch
                 id="status-final"
-                checked={isFinal}
+                checked={isFinal || isCanceled}
                 onCheckedChange={setIsFinal}
-                disabled={isPending || editing?.isDefault}
+                disabled={isPending || editing?.isDefault || isCanceled}
               />
               <div className="grid gap-0.5">
                 <FieldLabel htmlFor="status-final">Encerra o trabalho</FieldLabel>
                 <FieldDescription>
                   {editing?.isDefault
                     ? "O status padrão não pode encerrar o trabalho."
-                    : "Trabalhos neste status saem da lista “Em aberto” e não contam como atrasados."}
+                    : isCanceled
+                      ? "Todo status de cancelamento encerra o trabalho."
+                      : "Trabalhos neste status saem da lista “Em aberto” e não contam como atrasados."}
+                </FieldDescription>
+              </div>
+            </Field>
+            <Field orientation="horizontal">
+              <Switch
+                id="status-canceled"
+                checked={isCanceled}
+                onCheckedChange={setIsCanceled}
+                disabled={isPending || editing?.isDefault}
+              />
+              <div className="grid gap-0.5">
+                <FieldLabel htmlFor="status-canceled">Cancela o trabalho</FieldLabel>
+                <FieldDescription>
+                  {editing?.isDefault
+                    ? "O status padrão não pode cancelar o trabalho."
+                    : "Trabalhos neste status saem da planilha, do calendário, do Início e dos relatórios, e ficam em “Cancelados”. Só admins cancelam."}
                 </FieldDescription>
               </div>
             </Field>

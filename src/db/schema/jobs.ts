@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   date,
   doublePrecision,
   index,
@@ -18,22 +19,31 @@ import { media } from "./media";
 
 // Status de trabalho, cadastrados pelos admins (Administração › Status).
 // Um é o padrão de todo trabalho novo; os "finais" encerram o trabalho (ele sai
-// da lista do dia a dia). Status em uso não podem ser apagados.
-export const jobStatus = pgTable("job_status", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull().unique(),
-  /** Cores do selo, em hex (#rrggbb). */
-  textColor: text("text_color").notNull(),
-  backgroundColor: text("background_color").notNull(),
-  position: integer("position").notNull().default(0),
-  isDefault: boolean("is_default").notNull().default(false),
-  isFinal: boolean("is_final").notNull().default(false),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .defaultNow()
-    .$onUpdate(() => new Date())
-    .notNull(),
-});
+// da lista do dia a dia). Os de cancelamento também encerram, mas o trabalho
+// cancelado não conta como concluído: sai da planilha, dos relatórios, do
+// calendário e do Início, e só aparece no recorte "Cancelados". Status em uso
+// não podem ser apagados.
+export const jobStatus = pgTable(
+  "job_status",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull().unique(),
+    /** Cores do selo, em hex (#rrggbb). */
+    textColor: text("text_color").notNull(),
+    backgroundColor: text("background_color").notNull(),
+    position: integer("position").notNull().default(0),
+    isDefault: boolean("is_default").notNull().default(false),
+    isFinal: boolean("is_final").notNull().default(false),
+    /** Cancela o trabalho (sempre com isFinal). Só admins põem ou tiram um trabalho daqui. */
+    isCanceled: boolean("is_canceled").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [check("job_status_canceled_is_final", sql`not ${table.isCanceled} or ${table.isFinal}`)],
+);
 
 // Trabalhos. O PIT é o número sequencial que a agência usa no dia a dia
 // (/trabalhos/{pit}); começa em 1 e nunca é reaproveitado.
@@ -132,9 +142,50 @@ export const jobMessage = pgTable(
     authorName: text("author_name").notNull(),
     body: text("body").notNull(),
     mentions: text("mentions").array().default([]).notNull(),
+    /** Fixada no topo da conversa (null = não). Quem fixou pode ser excluído: o nome fica copiado. */
+    pinnedAt: timestamp("pinned_at", { withTimezone: true }),
+    pinnedById: text("pinned_by_id").references(() => user.id, { onDelete: "set null" }),
+    pinnedByName: text("pinned_by_name"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (table) => [index("job_message_job_idx").on(table.jobId, table.createdAt)],
+  (table) => [
+    index("job_message_job_idx").on(table.jobId, table.createdAt),
+    index("job_message_pinned_idx").on(table.jobId).where(sql`${table.pinnedAt} is not null`),
+  ],
+);
+
+/** Reações às mensagens de um trabalho: cada pessoa conta uma vez por emoji. */
+export const jobMessageReaction = pgTable(
+  "job_message_reaction",
+  {
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => jobMessage.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    emoji: text("emoji").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.messageId, table.userId, table.emoji] })],
+);
+
+/** Mensagens de trabalhos que cada pessoa guardou nas favoritas (só ela vê). */
+export const jobMessageFavorite = pgTable(
+  "job_message_favorite",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => jobMessage.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.messageId] }),
+    index("job_message_favorite_message_idx").on(table.messageId),
+  ],
 );
 
 /** Anexos de uma mensagem (arquivos no CDN, pasta "trabalhos"). */

@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2Icon, SearchIcon } from "lucide-react";
+import { Loader2Icon, SearchIcon, StarIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -22,10 +22,12 @@ type ConversationListProps = {
   /** Equipe ativa sem conversa ainda (para começar uma). */
   people: ChatPersonView[];
   activeId?: string;
+  /** A tela das favoritas está aberta. */
+  favoritesActive?: boolean;
   className?: string;
 };
 
-export function ConversationList({ conversations, people, activeId, className }: ConversationListProps) {
+export function ConversationList({ conversations, people, activeId, favoritesActive, className }: ConversationListProps) {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [startingId, setStartingId] = useState<string | null>(null);
@@ -67,6 +69,21 @@ export function ConversationList({ conversations, people, activeId, className }:
         </InputGroup>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-2">
+        {!query && (
+          <Link
+            href="/chat/favoritas"
+            aria-current={favoritesActive ? "page" : undefined}
+            className="-mb-2 flex items-center gap-3 rounded-lg px-2 py-2 outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 aria-[current=page]:bg-muted"
+          >
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary-soft text-primary-ink">
+              <StarIcon className="size-4" />
+            </span>
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="truncate text-sm font-medium">Favoritas</span>
+              <span className="truncate text-xs text-muted-foreground">Mensagens que você guardou</span>
+            </span>
+          </Link>
+        )}
         {shownConversations.length > 0 && (
           <ul className="flex flex-col gap-0.5">
             {shownConversations.map((item) => (

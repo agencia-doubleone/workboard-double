@@ -73,6 +73,8 @@ export function JobForm({ initial, statuses, clients, people, uploadsEnabled }: 
   }));
   const statusItems = Object.fromEntries(statuses.map((status) => [status.id, status.name]));
   const selectedStatus = statuses.find((status) => status.id === values.statusId);
+  // Quem não é admin, num trabalho cancelado, só recebe o próprio status: fica travado.
+  const statusLocked = statuses.length === 1 && Boolean(selectedStatus?.isCanceled);
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -198,7 +200,7 @@ export function JobForm({ initial, statuses, clients, people, uploadsEnabled }: 
                     items={statusItems}
                     value={values.statusId}
                     onValueChange={(statusId) => statusId && set("statusId", statusId)}
-                    disabled={isPending}
+                    disabled={isPending || statusLocked}
                   >
                     <SelectTrigger id="job-status" className="w-full" aria-invalid={!!fieldErrors.statusId}>
                       <SelectValue>
@@ -219,6 +221,13 @@ export function JobForm({ initial, statuses, clients, people, uploadsEnabled }: 
                       ))}
                     </SelectContent>
                   </Select>
+                  {selectedStatus?.isCanceled && (
+                    <FieldDescription>
+                      {statusLocked
+                        ? "Só um admin tira o trabalho de cancelado."
+                        : "Cancelado sai da planilha, do calendário e dos relatórios, e fica em “Cancelados”."}
+                    </FieldDescription>
+                  )}
                   <FieldError>{fieldErrors.statusId?.[0]}</FieldError>
                 </Field>
                 <Field orientation="horizontal" className="md:pt-8">

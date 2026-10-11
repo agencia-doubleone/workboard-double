@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState, useTransition } from "react";
+import { Fragment, useRef, useState, useTransition } from "react";
 
 import { ClientLogo } from "@/components/client-logo";
 import { JobStatusBadge } from "@/components/job-status-badge";
@@ -67,6 +67,9 @@ export function JobsToolbar({ path, params, statuses, clients, people, view }: J
     searchTimer.current = setTimeout(() => navigate({ busca: value.trim() || undefined }), 300);
   }
 
+  // Status de cancelamento só no recorte "Cancelados" (e lá, só eles).
+  const canceledView = params.situacao === "cancelados";
+  const statusOptions = statuses.filter((status) => status.isCanceled === canceledView);
   const statusItems = { [ALL]: "Todos os status", ...Object.fromEntries(statuses.map((status) => [status.id, status.name])) };
   const clientOptions: PickerOption[] = clients.map((item) => ({
     value: item.id,
@@ -94,18 +97,31 @@ export function JobsToolbar({ path, params, statuses, clients, people, view }: J
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div role="tablist" aria-label="Situação" className="flex w-fit gap-1 rounded-md border bg-muted/40 p-0.5">
+        <div
+          role="tablist"
+          aria-label="Situação"
+          className="flex w-fit max-w-full flex-wrap gap-1 rounded-md border bg-muted/40 p-0.5 sm:flex-nowrap"
+        >
           {(Object.entries(JOB_SITUATIONS) as [JobSituation, string][]).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={params.situacao === value}
-              onClick={() => navigate({ situacao: value })}
-              className={segmentClass}
-            >
-              {label}
-            </button>
+            <Fragment key={value}>
+              {/* Os cancelados ficam à parte: não entram em nenhum outro recorte. */}
+              {value === "cancelados" && <span aria-hidden="true" className="my-1.5 hidden w-px shrink-0 bg-border sm:block" />}
+              <button
+                type="button"
+                role="tab"
+                aria-selected={params.situacao === value}
+                onClick={() =>
+                  navigate({
+                    situacao: value,
+                    // O filtro de status não vale do outro lado (cancelados x os demais).
+                    ...((value === "cancelados") !== canceledView ? { status: undefined } : {}),
+                  })
+                }
+                className={cn(segmentClass, "shrink-0")}
+              >
+                {label}
+              </button>
+            </Fragment>
           ))}
         </div>
         {isPending && <Loader2Icon className="size-4 animate-spin text-muted-foreground" aria-label="Carregando" />}
@@ -154,7 +170,7 @@ export function JobsToolbar({ path, params, statuses, clients, people, view }: J
           </SelectTrigger>
           <SelectContent alignItemWithTrigger={false} align="start">
             <SelectItem value={ALL}>Todos os status</SelectItem>
-            {statuses.map((status) => (
+            {statusOptions.map((status) => (
               <SelectItem key={status.id} value={status.id}>
                 <JobStatusBadge name={status.name} textColor={status.textColor} backgroundColor={status.backgroundColor} />
               </SelectItem>

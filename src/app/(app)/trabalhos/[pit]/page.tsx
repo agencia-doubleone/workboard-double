@@ -1,9 +1,10 @@
-import { ArrowLeftIcon, CircleOffIcon, ClockAlertIcon, FileTextIcon } from "lucide-react";
+import { ArrowLeftIcon, BanIcon, CircleOffIcon, ClockAlertIcon, FileTextIcon } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
+import { AchievementPing } from "@/components/achievements/achievement-ping";
 import { ClientLogo } from "@/components/client-logo";
 import { RichTextContent } from "@/components/rich-text-editor";
 import { PageSkeleton } from "@/components/shell/page-skeleton";
@@ -12,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { UserAvatar } from "@/components/user-avatar";
 import { db } from "@/db";
 import { formatCalendarDate, formatDateTime } from "@/lib/format";
-import { extractMentions, isOverdue, todayInSaoPaulo } from "@/lib/jobs";
+import { extractMentions, isDoneStatus, isOverdue, todayInSaoPaulo } from "@/lib/jobs";
 import { requireSession } from "@/lib/session";
 import {
   findJobByPit,
@@ -25,11 +26,12 @@ import {
   listTeamMembers,
 } from "@/server/jobs";
 import { isMediaConfigured, resolveMediaUrl } from "@/server/media";
+import { listMessageExtras, listPinnedMessages } from "@/server/messages";
 import { listJobWhiteboards } from "@/server/whiteboards";
 import { JobWhiteboards } from "../../quadros/job-whiteboards";
 import { toCardView, toPersonView as toBoardPersonView } from "../../quadros/present";
 import { ActiveSwitch, StatusTimeline } from "../job-widgets";
-import { canSeeJob, parsePit, toMessageView, toPersonView, toStatusOption } from "../present";
+import { canSeeJob, parsePit, toMessageView, toPersonView, toPinnedMessageView, toStatusOption } from "../present";
 import { StatusSelect } from "../status-select";
 import { JobActions } from "./job-actions";
 import { JobMessages } from "./job-messages";
@@ -53,7 +55,7 @@ async function JobContent({ params }: { params: PageProps<"/trabalhos/[pit]">["p
   if (!found || !canSeeJob(found, user)) notFound();
   const { job, client, status, assignees } = found;
 
-  const [statuses, history, messages, mentionableIds, lastReadAt, boards, team] = await Promise.all([
+  const [statuses, history, messages, mentionableIds, lastReadAt, boards, team, pinned] = await Promise.all([
     listJobStatuses(db),
     listJobStatusHistory(db, job.id),
     listJobMessages(db, job.id),
@@ -61,7 +63,9 @@ async function JobContent({ params }: { params: PageProps<"/trabalhos/[pit]">["p
     getJobLastRead(db, job.id, user.id),
     listJobWhiteboards(db, job.id, { id: user.id, isAdmin }),
     listTeamMembers(db),
+    listPinnedMessages(db, "job", job.id),
   ]);
+  const extras = await listMessageExtras(db, "job", messages.map((message) => message.id), user.id);
   // Só dá para @mencionar os funcionários ativos do trabalho.
   const mentionable = assignees.filter((person) => mentionableIds.includes(person.id));
   // Nomes de quem foi mencionado (mesmo desativado) e de quem cadastrou.
@@ -72,12 +76,18 @@ async function JobContent({ params }: { params: PageProps<"/trabalhos/[pit]">["p
   const now = new Date();
   const overdue = isOverdue(job.dueDate, status.isFinal, todayInSaoPaulo(now));
   const creatorName = job.createdById ? names.get(job.createdById) : null;
+  // Concluído há mais de um ano: abrir conta para a conquista "De Volta ao Passado".
+  const yearAgo = new Date(now);
+  yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+  const longFinished = isDoneStatus(status) && job.statusChangedAt <= yearAgo;
+  // A lista geral é só dos admins; a equipe volta para a própria planilha (cancelado: para o recorte deles).
+  const backHref = `${isAdmin ? "/trabalhos" : "/minha-planilha"}${status.isCanceled ? "?situacao=cancelados" : ""}`;
 
   return (
     <div className="flex flex-col gap-6">
-      {/* A lista geral é só dos admins; a equipe volta para a própria planilha. */}
+      {longFinished && <AchievementPing event={{ type: "job.visit", jobId: job.id }} />}
       <Link
-        href={isAdmin ? "/trabalhos" : "/minha-planilha"}
+        href={backHref}
         className="flex w-fit items-center gap-1.5 text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:underline"
       >
         <ArrowLeftIcon className="size-4" />
@@ -90,6 +100,12 @@ async function JobContent({ params }: { params: PageProps<"/trabalhos/[pit]">["p
             <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-semibold text-muted-foreground tabular-nums">
               PIT {job.pit}
             </span>
+            {status.isCanceled && (
+              <Badge variant="destructive">
+                <BanIcon data-icon="inline-start" />
+                Cancelado
+              </Badge>
+            )}
             {!job.active && (
               <Badge variant="outline">
                 <CircleOffIcon data-icon="inline-start" />
@@ -142,7 +158,8 @@ async function JobContent({ params }: { params: PageProps<"/trabalhos/[pit]">["p
             </div>
             <JobMessages
               jobId={job.id}
-              messages={messages.map((message) => toMessageView(message, { viewerId: user.id, isAdmin, names, now }))}
+              messages={messages.map((message) => toMessageView(message, { viewerId: user.id, isAdmin, names, now, extras }))}
+              pinned={pinned.map((message) => toPinnedMessageView(message, names))}
               people={mentionable.map(toPersonView)}
               viewerId={user.id}
               lastReadAt={lastReadAt?.toISOString() ?? null}
@@ -162,8 +179,10 @@ async function JobContent({ params }: { params: PageProps<"/trabalhos/[pit]">["p
                 <DetailItem label="Status">
                   <StatusSelect
                     jobId={job.id}
+                    jobLabel={`#${job.pit} ${job.name}`}
                     value={status.id}
                     statuses={statuses.map(toStatusOption)}
+                    isAdmin={isAdmin}
                     className="-ml-1"
                   />
                 </DetailItem>
@@ -218,7 +237,7 @@ async function JobContent({ params }: { params: PageProps<"/trabalhos/[pit]">["p
           </Card>
 
           <JobWhiteboards
-            boards={boards.map((board) => toCardView(board, now))}
+            boards={boards.map((board) => toCardView(board, now, { id: user.id, isAdmin }))}
             job={{ id: job.id, pit: job.pit, name: job.name }}
             people={team.filter((person) => person.id !== user.id).map(toBoardPersonView)}
           />

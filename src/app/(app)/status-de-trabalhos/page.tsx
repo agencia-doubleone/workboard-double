@@ -28,6 +28,7 @@ async function StatusesContent() {
     backgroundColor: status.backgroundColor,
     isDefault: status.isDefault,
     isFinal: status.isFinal,
+    isCanceled: status.isCanceled,
     jobCount: usage.get(status.id) ?? 0,
   }));
 
@@ -35,7 +36,7 @@ async function StatusesContent() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Status de trabalhos"
-        description="As etapas de um trabalho, na ordem em que aparecem. Todo trabalho novo começa no status padrão; os que encerram tiram o trabalho da lista do dia a dia."
+        description="As etapas de um trabalho, na ordem em que aparecem. Todo trabalho novo começa no status padrão; os que encerram tiram o trabalho da lista do dia a dia, e os de cancelamento o tiram também dos relatórios."
       />
       <StatusesManager rows={rows} />
     </div>

@@ -17,6 +17,7 @@ import { birthdayOccurrences, formatDay, WEEKDAYS } from "@/lib/calendar";
 import { dayKey, formatDate } from "@/lib/format";
 import { getFirstName, getGreeting, isBirthdayToday } from "@/lib/greeting";
 import { splitMentions, todayInSaoPaulo } from "@/lib/jobs";
+import { messageEffectOf, messageEffectText } from "@/lib/messages";
 import { excerpt } from "@/lib/notifications";
 import { addDays, dayDiff, formatDays, STALLED_AFTER_DAYS } from "@/lib/reports";
 import { requireSession } from "@/lib/session";
@@ -109,6 +110,15 @@ export async function HomeContent() {
     db,
     threads.flatMap((thread) => splitMentions(thread.lastBody).flatMap((part) => (part.type === "mention" ? [part.userId] : []))),
   );
+  // A última mensagem: o efeito ("☕ mandou um café"), o texto com as menções ou, só com anexos, o aviso.
+  const threadText = (body: string) => {
+    const effect = messageEffectOf(body);
+    if (effect) return messageEffectText(effect);
+    const text = splitMentions(body)
+      .map((part) => (part.type === "mention" ? `@${names.get(part.userId) ?? "alguém"}` : part.text))
+      .join("");
+    return excerpt(text, 90) || "Enviou um arquivo";
+  };
   const waiting: WaitingItem[] = [
     ...threads
       .sort((a, b) => Number(b.mentioned) - Number(a.mentioned) || b.lastAt.getTime() - a.lastAt.getTime())
@@ -117,12 +127,7 @@ export async function HomeContent() {
         key: `job:${thread.jobId}`,
         href: `/trabalhos/${thread.pit}#mensagens`,
         title: `#${thread.pit} ${thread.name}`,
-        preview: `${thread.lastAuthor}${thread.mentioned ? " mencionou você" : ""}: ${excerpt(
-          splitMentions(thread.lastBody)
-            .map((part) => (part.type === "mention" ? `@${names.get(part.userId) ?? "alguém"}` : part.text))
-            .join(""),
-          90,
-        ) || "Enviou um arquivo"}`,
+        preview: `${thread.lastAuthor}${thread.mentioned ? " mencionou você" : ""}: ${threadText(thread.lastBody)}`,
         count: thread.unread,
         mentioned: thread.mentioned,
       })),

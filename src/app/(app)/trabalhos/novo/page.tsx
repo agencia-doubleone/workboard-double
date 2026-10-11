@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { PageHeader } from "@/components/shell/page-header";
 import { PageSkeleton } from "@/components/shell/page-skeleton";
 import { db } from "@/db";
+import { selectableStatuses } from "@/lib/jobs";
 import { requireAdmin } from "@/lib/session";
 import { findDefaultJobStatus, listClientOptions, listJobStatuses, listTeamMembers } from "@/server/jobs";
 import { isMediaConfigured, resolveMediaUrl } from "@/server/media";
@@ -43,7 +44,8 @@ async function NewJobContent() {
           active: true,
           briefing: "",
         }}
-        statuses={statuses.map(toStatusOption)}
+        // Trabalho novo não começa cancelado.
+        statuses={selectableStatuses(statuses.map(toStatusOption), null, true)}
         clients={clients.map((item) => ({ id: item.id, name: item.name, logoUrl: resolveMediaUrl(item.logoKey) }))}
         people={people.map(toPersonView)}
         uploadsEnabled={isMediaConfigured()}

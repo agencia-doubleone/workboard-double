@@ -7,6 +7,7 @@ import {
   DEFAULT_PREFERENCES,
   isAccent,
   isThemeMode,
+  SECRET_ACCENT,
   STORAGE_KEYS,
   type Accent,
   type Preferences,
@@ -32,6 +33,7 @@ function readStorage(): Preferences {
       sidebarCollapsed: localStorage.getItem(STORAGE_KEYS.sidebar) === "collapsed",
       sound: localStorage.getItem(STORAGE_KEYS.sound) !== "off",
       celebrate: localStorage.getItem(STORAGE_KEYS.celebrate) !== "off",
+      rainbow: localStorage.getItem(STORAGE_KEYS.rainbow) === "on",
     };
   } catch {
     return DEFAULT_PREFERENCES;
@@ -48,6 +50,7 @@ function writeStorage(preferences: Preferences) {
     );
     localStorage.setItem(STORAGE_KEYS.sound, preferences.sound ? "on" : "off");
     localStorage.setItem(STORAGE_KEYS.celebrate, preferences.celebrate ? "on" : "off");
+    if (preferences.rainbow) localStorage.setItem(STORAGE_KEYS.rainbow, "on");
   } catch {
     // Modo privado / storage bloqueado: a preferência vale só nesta aba.
   }
@@ -154,6 +157,11 @@ export function setNotificationSound(sound: boolean) {
 
 export function setCelebrate(celebrate: boolean) {
   commit({ celebrate });
+}
+
+/** Libera a cor secreta neste navegador e já a aplica. */
+export function unlockRainbowAccent() {
+  commit({ rainbow: true, accent: SECRET_ACCENT.id });
 }
 
 export function toggleSidebarCollapsed() {

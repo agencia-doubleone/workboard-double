@@ -3,12 +3,16 @@
 export const JOB_PAGE_SIZES = [30, 50, 100] as const;
 export const DEFAULT_JOB_PAGE_SIZE = 30;
 
-/** Recortes da lista. "abertos" = ativos e com status que não encerra. */
+/**
+ * Recortes da lista. "abertos" = ativos e com status que não encerra. Os
+ * cancelados ficam só no próprio recorte: "todos" é tudo menos eles.
+ */
 export const JOB_SITUATIONS = {
   abertos: "Em aberto",
   concluidos: "Concluídos",
   inativos: "Inativos",
   todos: "Todos",
+  cancelados: "Cancelados",
 } as const;
 export type JobSituation = keyof typeof JOB_SITUATIONS;
 export const DEFAULT_JOB_SITUATION: JobSituation = "abertos";
@@ -82,7 +86,37 @@ export function todayInSaoPaulo(now = new Date()) {
   }).format(now);
 }
 
-/** Atrasado: tem entrega, ela já passou e o trabalho ainda não foi encerrado. */
+type StatusKind = { isFinal: boolean; isCanceled?: boolean } | null | undefined;
+
+/** Status de trabalho entregue: encerra sem ser de cancelamento. */
+export function isDoneStatus(status: StatusKind) {
+  return Boolean(status?.isFinal) && !status?.isCanceled;
+}
+
+/**
+ * O trabalho foi concluído: entrou num status que encerra (ex.: "Finalizado")
+ * vindo de um que não o dava por entregue. Cancelar não conta. Comemoração e conquistas.
+ */
+export function isJobCompletion(previous: StatusKind, next: StatusKind) {
+  return isDoneStatus(next) && !isDoneStatus(previous);
+}
+
+/**
+ * Status que dá para escolher para um trabalho que está em `currentId` (null:
+ * trabalho novo, que não começa cancelado). Quem não é admin não cancela nem
+ * tira de cancelado: num trabalho cancelado, só o status atual.
+ */
+export function selectableStatuses<T extends { id: string; isCanceled: boolean }>(
+  statuses: T[],
+  currentId: string | null,
+  isAdmin: boolean,
+): T[] {
+  const current = statuses.find((status) => status.id === currentId);
+  if (!isAdmin && current?.isCanceled) return [current];
+  return statuses.filter((status) => !status.isCanceled || (isAdmin && currentId !== null));
+}
+
+/** Atrasado: tem entrega, ela já passou e o trabalho ainda não foi encerrado (cancelado também encerra). */
 export function isOverdue(dueDate: string | null, isFinal: boolean, today: string) {
   return Boolean(dueDate) && !isFinal && dueDate! < today;
 }

@@ -56,6 +56,12 @@ export type StoredElement = {
   [key: string]: unknown;
 };
 
+/** Post-it da paleta do quadro (retângulo com customData.sticky). */
+export function isStickyElement(element: StoredElement) {
+  const data = element.customData as { sticky?: unknown } | undefined;
+  return element.type === "rectangle" && data?.sticky === true;
+}
+
 /** Confere o formato básico de um elemento que chegou de fora (outra aba, banco). */
 export function isStoredElement(value: unknown): value is StoredElement {
   if (typeof value !== "object" || value === null) return false;

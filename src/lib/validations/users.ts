@@ -20,6 +20,8 @@ const userFieldsSchema = z.object({
 export const createUserSchema = userFieldsSchema.extend({
   // Em branco = o servidor gera uma senha forte e devolve uma única vez.
   password: z.preprocess((value) => (value === "" ? undefined : value), passwordSchema.optional()),
+  /** Manda à pessoa o e-mail de boas-vindas com o e-mail e a senha (se o envio estiver configurado). */
+  sendWelcome: z.boolean(),
 });
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 

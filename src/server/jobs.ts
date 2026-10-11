@@ -78,6 +78,8 @@ export async function listJobs(database: Database, filters: JobListFilters) {
   const page = Math.max(1, filters.page ?? 1);
   const conditions: SQL[] = [];
 
+  // Os cancelados só aparecem no recorte deles (nem em "todos").
+  conditions.push(eq(jobStatus.isCanceled, filters.situation === "cancelados"));
   if (filters.situation === "abertos") conditions.push(eq(job.active, true), eq(jobStatus.isFinal, false));
   if (filters.situation === "concluidos") conditions.push(eq(jobStatus.isFinal, true));
   if (filters.situation === "inativos") conditions.push(eq(job.active, false));
@@ -259,6 +261,7 @@ export async function listJobMessages(database: Database, jobId: string) {
       authorName: jobMessage.authorName,
       authorImage: user.image,
       body: jobMessage.body,
+      pinnedAt: jobMessage.pinnedAt,
       createdAt: jobMessage.createdAt,
     })
     .from(jobMessage)

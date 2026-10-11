@@ -8,6 +8,7 @@ import { listAssignees, type JobPerson } from "@/server/jobs";
 
 // Relatórios (admins). Os dados são lidos de uma vez (loadReportJobs) e as
 // contas são funções puras sobre eles; as definições estão em src/lib/reports.ts.
+// Trabalhos cancelados (status de cancelamento) ficam fora de tudo.
 // Sem "server-only": também roda nos scripts de verificação contra PGlite.
 
 const DAY_MS = 86_400_000;
@@ -27,7 +28,7 @@ export type ReportJob = {
 
 /**
  * Todos os trabalhos com cliente, status e funcionários (a base de todos os
- * relatórios e da tela de Início). Com `assigneeId`, só os dessa pessoa.
+ * relatórios e da tela de Início), menos os cancelados. Com `assigneeId`, só os dessa pessoa.
  */
 export async function loadReportJobs(database: Database, { assigneeId }: { assigneeId?: string } = {}): Promise<ReportJob[]> {
   const rows = await database
@@ -53,9 +54,12 @@ export async function loadReportJobs(database: Database, { assigneeId }: { assig
     .innerJoin(client, eq(client.id, job.clientId))
     .innerJoin(jobStatus, eq(jobStatus.id, job.statusId))
     .where(
-      assigneeId
-        ? sql`exists (select 1 from ${jobAssignee} where ${jobAssignee.jobId} = ${job.id} and ${jobAssignee.userId} = ${assigneeId})`
-        : undefined,
+      and(
+        eq(jobStatus.isCanceled, false),
+        assigneeId
+          ? sql`exists (select 1 from ${jobAssignee} where ${jobAssignee.jobId} = ${job.id} and ${jobAssignee.userId} = ${assigneeId})`
+          : undefined,
+      ),
     )
     .orderBy(asc(job.pit));
   const assignees = await listAssignees(database, rows.map((row) => row.id));
@@ -316,13 +320,20 @@ export async function stageDurations(database: Database, concluded: ReportJob[])
     }));
 }
 
-/** Mensagens que cada pessoa mandou nos trabalhos no período. */
+/** Mensagens que cada pessoa mandou nos trabalhos (menos os cancelados) no período. */
 export async function countMessagesByAuthor(database: Database, bounds: Bounds) {
   const rows = await database
     .select({ authorId: jobMessage.authorId, total: count() })
     .from(jobMessage)
+    .innerJoin(job, eq(job.id, jobMessage.jobId))
+    .innerJoin(jobStatus, eq(jobStatus.id, job.statusId))
     .where(
-      and(isNotNull(jobMessage.authorId), gte(jobMessage.createdAt, bounds.start), lte(jobMessage.createdAt, bounds.end)),
+      and(
+        isNotNull(jobMessage.authorId),
+        eq(jobStatus.isCanceled, false),
+        gte(jobMessage.createdAt, bounds.start),
+        lte(jobMessage.createdAt, bounds.end),
+      ),
     )
     .groupBy(jobMessage.authorId);
   return new Map(rows.map((row) => [row.authorId!, row.total]));

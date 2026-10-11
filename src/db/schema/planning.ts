@@ -58,6 +58,8 @@ export const planningMonth = pgTable(
     /** O texto colado do Word, guardado como veio (referência). */
     document: text("document"),
     statusChangedAt: timestamp("status_changed_at", { withTimezone: true }).defaultNow().notNull(),
+    /** Última vez que o mês foi para "Ajustes pedidos" (null: nunca). A conquista "Aprovado de Primeira" depende disso. */
+    adjustmentsRequestedAt: timestamp("adjustments_requested_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()

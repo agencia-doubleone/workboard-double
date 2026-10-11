@@ -1,8 +1,17 @@
 import { dayKey, formatDateTime, formatDayLabel, formatTime } from "@/lib/format";
+import { messageEffectOf, messageEffectText, messageElementId, toReactionViews, type PinnedMessageView } from "@/lib/messages";
 import { excerpt } from "@/lib/notifications";
 import type { ChatConversationListItem, ChatConversationRecord, ChatMessageItem, ChatPerson } from "@/server/chat";
 import { resolveMediaUrl, toAttachmentView } from "@/server/media";
-import type { ChatMessageView, ChatPersonView, ConversationListItemView, ConversationView } from "./types";
+import type { FavoriteMessage, MessageExtras, PinnedMessage } from "@/server/messages";
+import { mentionsAsText } from "../trabalhos/present";
+import type {
+  ChatMessageView,
+  ChatPersonView,
+  ConversationListItemView,
+  ConversationView,
+  FavoriteMessageView,
+} from "./types";
 
 const DELETED_PERSON = "Pessoa excluída";
 
@@ -10,8 +19,10 @@ export function toChatPersonView(person: ChatPerson): ChatPersonView {
   return { id: person.id, name: person.name, imageUrl: resolveMediaUrl(person.image), active: !person.banned };
 }
 
-/** Prévia de uma mensagem: o começo do texto ou, só com anexos, quantos arquivos. */
+/** Prévia de uma mensagem: o começo do texto, o efeito ("☕ mandou um café") ou, só com anexos, quantos arquivos. */
 export function messagePreview(body: string, attachments: number) {
+  const effect = messageEffectOf(body, attachments);
+  if (effect) return messageEffectText(effect);
   const text = excerpt(body, 90);
   if (text) return text;
   return attachments === 1 ? "Enviou um arquivo" : `Enviou ${attachments} arquivos`;
@@ -40,19 +51,59 @@ export function toConversationListItem(
   };
 }
 
-export function toChatMessageView(message: ChatMessageItem, ctx: { viewerId: string; now: Date }): ChatMessageView {
+export function toChatMessageView(
+  message: ChatMessageItem,
+  ctx: { viewerId: string; now: Date; extras: MessageExtras },
+): ChatMessageView {
   return {
     id: message.id,
     authorId: message.authorId,
     authorName: message.authorName,
     mine: message.authorId === ctx.viewerId,
     text: message.body,
+    effect: messageEffectOf(message.body, message.attachments.length),
     createdAt: message.createdAt.toISOString(),
     time: formatTime(message.createdAt),
     absolute: formatDateTime(message.createdAt),
     day: dayKey(message.createdAt),
     dayLabel: formatDayLabel(message.createdAt, ctx.now),
     attachments: message.attachments.map(toAttachmentView),
+    reactions: toReactionViews(ctx.extras.reactions.get(message.id) ?? [], ctx.viewerId),
+    pinned: Boolean(message.pinnedAt),
+    favorite: ctx.extras.favorites.has(message.id),
+  };
+}
+
+export function toPinnedMessageView(message: PinnedMessage): PinnedMessageView {
+  return {
+    id: message.id,
+    authorName: message.authorName,
+    text: message.body,
+    attachments: message.attachments,
+    time: formatDateTime(message.createdAt),
+    pinnedBy: message.pinnedByName,
+  };
+}
+
+/** Favorita do chat ou de um trabalho. `names`: quem foi mencionado nas dos trabalhos. */
+export function toFavoriteMessageView(item: FavoriteMessage, names: Map<string, string>): FavoriteMessageView {
+  const source =
+    item.kind === "job"
+      ? { label: `#${item.job.pit} ${item.job.name}`, href: `/trabalhos/${item.job.pit}#${messageElementId(item.id)}` }
+      : {
+          label: `Conversa com ${item.conversation.otherName ?? DELETED_PERSON}`,
+          href: `/chat/${item.conversation.id}#${messageElementId(item.id)}`,
+        };
+  return {
+    id: item.id,
+    kind: item.kind,
+    source,
+    authorName: item.authorName,
+    authorImageUrl: resolveMediaUrl(item.authorImage),
+    text: item.kind === "job" ? mentionsAsText(item.body, names) : item.body,
+    effect: messageEffectOf(item.body, item.attachments.length),
+    attachments: item.attachments.map(toAttachmentView),
+    time: formatDateTime(item.createdAt),
   };
 }
 

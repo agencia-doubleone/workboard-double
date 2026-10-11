@@ -11,7 +11,7 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 
-// Arrastar e soltar da Minha planilha (lista e quadro), com dnd-kit.
+// Arrastar e soltar com dnd-kit: Minha planilha (lista e quadro) e a ordem dos status de trabalho.
 
 /**
  * Mouse começa a arrastar depois de 4 px (um clique continua sendo clique); no
@@ -29,15 +29,16 @@ export function useSheetSensors() {
 /** Só na vertical (a lista não anda para os lados). */
 export const verticalOnly: Modifier = ({ transform }) => ({ ...transform, x: 0 });
 
-const screenReaderInstructions: ScreenReaderInstructions = {
-  draggable:
-    "Para mover um trabalho, pressione espaço ou Enter, use as setas e pressione espaço ou Enter de novo para soltar. Esc cancela.",
-};
-
-/** Avisos para leitores de tela, com o rótulo de cada trabalho (ex.: "#2559"). */
-export function sheetAccessibility(label: (id: UniqueIdentifier) => string) {
+/**
+ * Avisos para leitores de tela, com o rótulo de cada item (ex.: "#2559") e o
+ * nome do que se move ("trabalho", "status": palavras masculinas, por causa do "o"/"um").
+ */
+export function sheetAccessibility(label: (id: UniqueIdentifier) => string, noun = "trabalho") {
+  const screenReaderInstructions: ScreenReaderInstructions = {
+    draggable: `Para mover um ${noun}, pressione espaço ou Enter, use as setas e pressione espaço ou Enter de novo para soltar. Esc cancela.`,
+  };
   const announcements: Announcements = {
-    onDragStart: ({ active }) => `Pegou o trabalho ${label(active.id)}.`,
+    onDragStart: ({ active }) => `Pegou o ${noun} ${label(active.id)}.`,
     onDragOver: ({ active, over }) =>
       over ? `${label(active.id)} está sobre ${label(over.id)}.` : `${label(active.id)} está fora da lista.`,
     onDragEnd: ({ active, over }) =>

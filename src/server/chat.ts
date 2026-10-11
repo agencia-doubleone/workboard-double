@@ -204,6 +204,7 @@ export async function listChatMessages(
       authorName: chatMessage.authorName,
       authorImage: user.image,
       body: chatMessage.body,
+      pinnedAt: chatMessage.pinnedAt,
       createdAt: chatMessage.createdAt,
     })
     .from(chatMessage)

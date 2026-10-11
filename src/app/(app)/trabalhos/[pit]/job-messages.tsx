@@ -1,8 +1,16 @@
 "use client";
 
-import { Loader2Icon, MessageSquareIcon, PaperclipIcon, SendHorizontalIcon, Trash2Icon } from "lucide-react";
+import {
+  Loader2Icon,
+  MessageSquareIcon,
+  PaperclipIcon,
+  PinIcon,
+  SendHorizontalIcon,
+  StarIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
-import { Fragment, useEffect, useRef, useState, useTransition } from "react";
+import { Fragment, useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Hint } from "@/components/hint";
@@ -10,6 +18,15 @@ import { HoldToConfirmButton } from "@/components/hold-to-confirm-button";
 import { PendingFileChip, useAttachmentUploads } from "@/components/messages/attachment-uploads";
 import { Linkified } from "@/components/messages/linkified";
 import { MessageAttachments } from "@/components/messages/message-attachments";
+import { playMessageEffect, useLiveMessageEffects } from "@/components/messages/message-effects";
+import { SlashCommandList, useSlashCommands } from "@/components/messages/slash-commands";
+import {
+  EffectLine,
+  jumpToHashMessage,
+  MessageToolbar,
+  PinnedMessages,
+  ReactionList,
+} from "@/components/messages/message-tools";
 import { useRealtimeEvent } from "@/components/realtime/realtime-store";
 import {
   AlertDialog,
@@ -25,8 +42,17 @@ import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/user-avatar";
 import { MESSAGE_ATTACHMENTS_MAX, MESSAGE_MAX_LENGTH, mentionToken } from "@/lib/jobs";
 import { MEDIA_ACCEPT } from "@/lib/media";
+import { messageElementId, toggleReactionView, type MessageUpdateResult, type PinnedMessageView } from "@/lib/messages";
 import { cn } from "@/lib/utils";
-import { deleteMessage, discardAttachment, markJobRead, sendMessage } from "../actions";
+import {
+  deleteMessage,
+  discardAttachment,
+  markJobRead,
+  reactToJobMessage,
+  sendMessage,
+  setJobMessagePinned,
+  toggleJobMessageFavorite,
+} from "../actions";
 import type { JobMessageView, JobPersonView } from "../types";
 
 // Conversa do trabalho: mensagens com @menções e anexos. A página recarrega
@@ -41,6 +67,8 @@ const GROUP_MS = 5 * 60_000;
 type JobMessagesProps = {
   jobId: string;
   messages: JobMessageView[];
+  /** As fixadas, a mais recente primeiro. */
+  pinned: PinnedMessageView[];
   /** Quem pode ser @mencionado: os funcionários ativos do trabalho. */
   people: JobPersonView[];
   viewerId: string;
@@ -49,8 +77,27 @@ type JobMessagesProps = {
   uploadsEnabled: boolean;
 };
 
-export function JobMessages({ jobId, messages, people, viewerId, lastReadAt, uploadsEnabled }: JobMessagesProps) {
+export function JobMessages({
+  jobId,
+  messages: serverMessages,
+  pinned,
+  people,
+  viewerId,
+  lastReadAt,
+  uploadsEnabled,
+}: JobMessagesProps) {
   const router = useRouter();
+  // A minha reação aparece na hora; a resposta do servidor (e o refresh) confirma.
+  const [messages, toggleOptimisticReaction] = useOptimistic(
+    serverMessages,
+    (current, change: { id: string; emoji: string }) =>
+      current.map((message) =>
+        message.id === change.id ? { ...message, reactions: toggleReactionView(message.reactions, change.emoji) } : message,
+      ),
+  );
+  const [, startUpdating] = useTransition();
+  const cardRef = useRef<HTMLDivElement>(null);
+  useLiveMessageEffects(messages, cardRef);
   // A linha de novas fica onde estava ao abrir, mesmo depois de marcar como lida.
   const [readMark] = useState(lastReadAt);
   const [deleteTarget, setDeleteTarget] = useState<JobMessageView | null>(null);
@@ -84,7 +131,53 @@ export function JobMessages({ jobId, messages, people, viewerId, lastReadAt, upl
 
   useRealtimeEvent((event) => {
     if (event.type === "notification" && event.jobId === jobId) router.refresh();
+    // Reação ou fixada mudou (não gera notificação).
+    if (event.type === "job.messages" && event.jobId === jobId) router.refresh();
   });
+
+  function update(
+    run: () => Promise<MessageUpdateResult>,
+    {
+      optimistic,
+      onDone,
+    }: { optimistic?: () => void; onDone?: (result: Extract<MessageUpdateResult, { ok: true }>) => void } = {},
+  ) {
+    startUpdating(async () => {
+      optimistic?.();
+      const result = await run().catch(() => null);
+      if (!result?.ok) {
+        toast.error(result && !result.ok ? result.error : "Não foi possível salvar.");
+        return;
+      }
+      onDone?.(result);
+    });
+  }
+
+  function react(messageId: string, emoji: string) {
+    update(() => reactToJobMessage({ messageId, emoji }), {
+      optimistic: () => toggleOptimisticReaction({ id: messageId, emoji }),
+    });
+  }
+
+  function setPinned(messageId: string, value: boolean) {
+    update(() => setJobMessagePinned({ messageId, pinned: value }), {
+      onDone: () => toast.success(value ? "Mensagem fixada no topo da conversa." : "Mensagem desafixada."),
+    });
+  }
+
+  function toggleFavorite(messageId: string) {
+    update(() => toggleJobMessageFavorite({ messageId }), {
+      onDone: (result) =>
+        toast.success(result.favorite ? "Guardada nas favoritas." : "Tirada das favoritas.", {
+          action: result.favorite ? { label: "Ver favoritas", onClick: () => router.push("/chat/favoritas") } : undefined,
+        }),
+    });
+  }
+
+  function askDelete(message: JobMessageView) {
+    setDeleteTarget(message);
+    setDeleteOpen(true);
+  }
 
   // Ao abrir: vai para a primeira não lida (ou para o fim). Depois, acompanha
   // as novas se a pessoa já estava no fim da conversa ou acabou de enviar.
@@ -93,6 +186,8 @@ export function JobMessages({ jobId, messages, people, viewerId, lastReadAt, upl
     if (!container) return;
     if (!mounted.current) {
       mounted.current = true;
+      // Veio de um link para uma mensagem (das favoritas): vai até ela.
+      if (jumpToHashMessage()) return;
       const divider = dividerRef.current;
       container.scrollTop = divider ? divider.offsetTop - 12 : container.scrollHeight;
       return;
@@ -104,7 +199,8 @@ export function JobMessages({ jobId, messages, people, viewerId, lastReadAt, upl
   }, [lastId]);
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border bg-card shadow-raised">
+    <div ref={cardRef} className="flex flex-col overflow-hidden rounded-xl border bg-card shadow-raised">
+      <PinnedMessages items={pinned} onUnpin={(id) => setPinned(id, false)} />
       {messages.length === 0 ? (
         <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
           <span className="flex size-10 items-center justify-center rounded-lg bg-primary-soft text-primary-ink">
@@ -126,8 +222,10 @@ export function JobMessages({ jobId, messages, people, viewerId, lastReadAt, upl
         >
           {messages.map((message, index) => {
             const previous = messages[index - 1];
+            // A linha de um comando ("/coffee") separa os blocos.
             const grouped =
               index !== firstUnread &&
+              !previous?.effect &&
               previous?.authorId === message.authorId &&
               Date.parse(message.createdAt) - Date.parse(previous.createdAt) < GROUP_MS;
             return (
@@ -139,15 +237,26 @@ export function JobMessages({ jobId, messages, people, viewerId, lastReadAt, upl
                     <span className="h-px flex-1 bg-primary/40" />
                   </div>
                 )}
-                <MessageItem
-                  message={message}
-                  grouped={grouped}
-                  viewerId={viewerId}
-                  onDelete={() => {
-                    setDeleteTarget(message);
-                    setDeleteOpen(true);
-                  }}
-                />
+                {message.effect ? (
+                  <EffectLine
+                    id={message.id}
+                    effect={message.effect}
+                    who={message.authorId === viewerId ? "Você" : message.authorName}
+                    time={message.time.label}
+                    onReplay={() => playMessageEffect(message.effect!, cardRef.current)}
+                    onDelete={message.canDelete ? () => askDelete(message) : undefined}
+                  />
+                ) : (
+                  <MessageItem
+                    message={message}
+                    grouped={grouped}
+                    viewerId={viewerId}
+                    onReact={(emoji) => react(message.id, emoji)}
+                    onTogglePin={() => setPinned(message.id, !message.pinned)}
+                    onToggleFavorite={() => toggleFavorite(message.id)}
+                    onDelete={() => askDelete(message)}
+                  />
+                )}
               </Fragment>
             );
           })}
@@ -173,15 +282,23 @@ function MessageItem({
   message,
   grouped,
   viewerId,
+  onReact,
+  onTogglePin,
+  onToggleFavorite,
   onDelete,
 }: {
   message: JobMessageView;
   grouped: boolean;
   viewerId: string;
+  onReact: (emoji: string) => void;
+  onTogglePin: () => void;
+  onToggleFavorite: () => void;
   onDelete: () => void;
 }) {
+  const text = message.parts.map((part) => (part.type === "mention" ? `@${part.name}` : part.text)).join("");
   return (
     <div
+      id={messageElementId(message.id)}
       className={cn(
         "group/message relative flex gap-3 rounded-lg px-2 py-1 transition-colors hover:bg-muted/40",
         !grouped && "mt-2 first:mt-0",
@@ -192,13 +309,29 @@ function MessageItem({
           <UserAvatar name={message.authorName} imageUrl={message.authorImageUrl} className="mt-0.5 size-8" />
         )}
       </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5 pr-8">
-        {!grouped && (
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5 pr-14">
+        {(!grouped || message.pinned || message.favorite) && (
           <div className="flex items-baseline gap-2">
-            <span className="truncate text-sm font-medium">{message.authorName}</span>
-            <Hint label={message.time.absolute}>
-              <span className="shrink-0 text-xs text-muted-foreground">{message.time.label}</span>
-            </Hint>
+            {!grouped && (
+              <>
+                <span className="truncate text-sm font-medium">{message.authorName}</span>
+                <Hint label={message.time.absolute}>
+                  <span className="shrink-0 text-xs text-muted-foreground">{message.time.label}</span>
+                </Hint>
+              </>
+            )}
+            {message.pinned && (
+              <span className="flex shrink-0 items-center gap-1 self-center text-[11px] text-muted-foreground">
+                <PinIcon aria-hidden="true" className="size-3 text-primary-ink" />
+                Fixada
+              </span>
+            )}
+            {message.favorite && (
+              <span className="flex shrink-0 items-center gap-1 self-center text-[11px] text-muted-foreground">
+                <StarIcon aria-hidden="true" className="size-3 fill-current text-warning" />
+                Favorita
+              </span>
+            )}
           </div>
         )}
         {message.parts.length > 0 && (
@@ -221,20 +354,20 @@ function MessageItem({
           </p>
         )}
         {message.attachments.length > 0 && <MessageAttachments attachments={message.attachments} />}
+        <ReactionList reactions={message.reactions} onToggle={onReact} />
       </div>
-      {message.canDelete && (
-        <Hint label="Excluir mensagem">
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Excluir mensagem"
-            onClick={onDelete}
-            className="absolute top-1 right-1 text-muted-foreground opacity-0 group-hover/message:opacity-100 focus-visible:opacity-100"
-          >
-            <Trash2Icon />
-          </Button>
-        </Hint>
-      )}
+      <MessageToolbar
+        pinned={message.pinned}
+        favorite={message.favorite}
+        text={text}
+        canReact
+        onReact={onReact}
+        onTogglePin={onTogglePin}
+        onToggleFavorite={onToggleFavorite}
+        // Quem escreveu, ou um admin.
+        onDelete={message.canDelete ? onDelete : undefined}
+        className="absolute top-1 right-1"
+      />
     </div>
   );
 }
@@ -284,7 +417,7 @@ function Composer({
   const [isPending, startTransition] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { files, readyIds, uploading, full, addFiles, removeFile, clearSent } = useAttachmentUploads({
+  const { files, readyIds, pastedImage, uploading, full, addFiles, removeFile, clearSent } = useAttachmentUploads({
     folder: "trabalhos",
     enabled: uploadsEnabled,
     max: MESSAGE_ATTACHMENTS_MAX,
@@ -294,6 +427,7 @@ function Composer({
   const others = people.filter((person) => person.id !== viewerId);
   const candidates = suggest ? rankPeople(others, suggest.query) : [];
   const canSend = !isPending && !uploading && (text.trim().length > 0 || readyIds.length > 0);
+  const commands = useSlashCommands(text, setText);
 
   function updateSuggest(value: string, caret: number) {
     const match = value.slice(0, caret).match(MENTION_QUERY);
@@ -332,7 +466,7 @@ function Composer({
     }
     const attachmentIds = readyIds;
     startTransition(async () => {
-      const result = await sendMessage({ jobId, body, attachmentIds });
+      const result = await sendMessage({ jobId, body, attachmentIds, pastedImage });
       if (!result.ok) {
         toast.error(result.fieldErrors?.body?.[0] ?? result.error);
         return;
@@ -347,6 +481,7 @@ function Composer({
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (event.nativeEvent.isComposing) return;
+    if (commands.handleKeyDown(event)) return;
     if (suggest && candidates.length > 0) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
@@ -390,6 +525,14 @@ function Composer({
       }}
       className={cn("relative border-t p-3 transition-colors", dragging && "bg-primary-soft/40")}
     >
+      {commands.open && (
+        <SlashCommandList
+          candidates={commands.candidates}
+          active={commands.active}
+          onHover={commands.setActive}
+          onPick={commands.pick}
+        />
+      )}
       {suggest && candidates.length === 0 && (
         <p
           role="status"
@@ -441,13 +584,16 @@ function Composer({
             updateSuggest(event.target.value, event.target.selectionStart);
           }}
           onSelect={(event) => updateSuggest(event.currentTarget.value, event.currentTarget.selectionStart)}
-          onBlur={() => setSuggest(null)}
+          onBlur={() => {
+            setSuggest(null);
+            commands.dismiss();
+          }}
           onKeyDown={handleKeyDown}
           onPaste={(event) => {
             const pasted = [...event.clipboardData.files];
             if (pasted.length === 0) return;
             event.preventDefault();
-            addFiles(pasted);
+            addFiles(pasted, { pasted: true });
           }}
           rows={2}
           maxLength={MESSAGE_MAX_LENGTH}

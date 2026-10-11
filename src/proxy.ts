@@ -18,7 +18,7 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Tudo exceto páginas públicas (login, redefinir senha), API, assets do
-  // Next e arquivos com extensão.
-  matcher: ["/((?!api|login|redefinir-senha|_next/static|_next/image|.*\\..*).*)"],
+  // Tudo exceto páginas públicas (login, esqueci a senha, redefinir senha),
+  // API, assets do Next e arquivos com extensão.
+  matcher: ["/((?!api|login|esqueci-a-senha|redefinir-senha|_next/static|_next/image|.*\\..*).*)"],
 };

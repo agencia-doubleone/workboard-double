@@ -51,7 +51,8 @@ function burst(fromX: number, fromY: number, direction: 1 | -1, scale: number): 
   });
 }
 
-function launchConfetti() {
+/** Só os confetes (sem som e sem olhar a preferência): também usados pelo comando /confetti das mensagens. */
+export function launchConfetti() {
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const canvas = document.createElement("canvas");
   const ratio = Math.min(window.devicePixelRatio || 1, 2);
@@ -123,6 +124,4 @@ export function celebrate({ force = false }: { force?: boolean } = {}) {
 }
 
 /** O status mudou de um que não encerra para um que encerra (ex.: "Concluído"). */
-export function isCompletion(previous: { isFinal: boolean } | undefined, next: { isFinal: boolean } | undefined) {
-  return Boolean(next?.isFinal) && !previous?.isFinal;
-}
+export { isJobCompletion as isCompletion } from "@/lib/jobs";

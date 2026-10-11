@@ -2,7 +2,9 @@
 
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { MonitorIcon, MoonIcon, PartyPopperIcon, Settings2Icon, SunIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
+import { useRef } from "react";
 
+import { reportAchievement } from "@/components/achievements/achievement-toasts";
 import { celebrate as previewCelebration } from "@/components/celebration";
 import { Hint } from "@/components/hint";
 import {
@@ -10,6 +12,7 @@ import {
   setCelebrate,
   setNotificationSound,
   setThemeMode,
+  unlockRainbowAccent,
   usePreferences,
 } from "@/components/preferences/preferences-store";
 import { previewNotificationSound } from "@/components/realtime/notification-sound";
@@ -21,7 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ACCENTS, isAccent, isThemeMode } from "@/lib/preferences";
+import { ACCENTS, isAccent, isThemeMode, SECRET_ACCENT, type Accent, type ThemeMode } from "@/lib/preferences";
 import { cn } from "@/lib/utils";
 import { sidebarFadeClass, useSidebarSurface } from "./sidebar-surface";
 
@@ -31,16 +34,43 @@ const MODE_OPTIONS = [
   { value: "system", label: "Sistema", icon: MonitorIcon },
 ] as const;
 
+/** As cores na ordem do arco-íris: clicar nelas assim libera a cor secreta ("Além do Arco-Íris"). */
+const RAINBOW_SEQUENCE: Accent[] = ["rose", "amber", "green", "blue", "violet"];
+
 const optionClass =
   "flex cursor-default items-center justify-center rounded-md border border-transparent text-muted-foreground outline-none transition-colors select-none data-highlighted:bg-accent data-highlighted:text-foreground data-checked:border-border data-checked:bg-accent data-checked:text-foreground";
 
 /** Rodapé da sidebar: preferências de interface deste navegador (tema, cor de destaque, som e comemoração). */
 export function SettingsMenu() {
-  const { mode, accent, sound, celebrate } = usePreferences();
+  const { mode, accent, sound, celebrate, rainbow } = usePreferences();
   const { collapsed, surface } = useSidebarSurface();
-  const accentLabel = ACCENTS.find((option) => option.id === accent)?.label;
+  const accents = rainbow ? [...ACCENTS, SECRET_ACCENT] : ACCENTS;
+  const accentLabel = accents.find((option) => option.id === accent)?.label;
   // Sidebar recolhida no desktop: o menu abre ao lado, não para cima.
   const beside = surface === "desktop" && collapsed;
+  const recentAccents = useRef<Accent[]>([]);
+
+  function chooseMode(value: ThemeMode) {
+    setThemeMode(value);
+    if (value === "dark") reportAchievement({ type: "theme.dark" });
+  }
+
+  function chooseAccent(value: Accent) {
+    setAccent(value);
+    if (value !== SECRET_ACCENT.id) reportAchievement({ type: "accent", accent: value });
+  }
+
+  /** Cada clique numa cor (até na que já está escolhida) entra na sequência do arco-íris. */
+  function trackRainbow(value: Accent) {
+    recentAccents.current = [...recentAccents.current, value].slice(-RAINBOW_SEQUENCE.length);
+    if (recentAccents.current.join() !== RAINBOW_SEQUENCE.join()) return;
+    recentAccents.current = [];
+    // Depois da troca normal de cor (onValueChange), para a secreta ficar valendo.
+    window.setTimeout(() => {
+      unlockRainbowAccent();
+      reportAchievement({ type: "rainbow" });
+    }, 0);
+  }
 
   return (
     <DropdownMenu>
@@ -61,7 +91,7 @@ export function SettingsMenu() {
           <DropdownMenuLabel>Tema</DropdownMenuLabel>
           <MenuPrimitive.RadioGroup
             value={mode}
-            onValueChange={(value) => isThemeMode(value) && setThemeMode(value)}
+            onValueChange={(value) => isThemeMode(value) && chooseMode(value)}
             className="grid grid-cols-3 gap-1 px-1 pb-1"
           >
             {MODE_OPTIONS.map(({ value, label, icon: Icon }) => (
@@ -85,20 +115,21 @@ export function SettingsMenu() {
           </DropdownMenuLabel>
           <MenuPrimitive.RadioGroup
             value={accent}
-            onValueChange={(value) => isAccent(value) && setAccent(value)}
-            className="grid grid-cols-6 gap-1 px-1 pb-1"
+            onValueChange={(value) => isAccent(value) && chooseAccent(value)}
+            className={cn("grid gap-1 px-1 pb-1", rainbow ? "grid-cols-7" : "grid-cols-6")}
           >
-            {ACCENTS.map((option) => (
+            {accents.map((option) => (
               <MenuPrimitive.RadioItem
                 key={option.id}
                 value={option.id}
                 closeOnClick={false}
+                onClick={() => trackRainbow(option.id)}
                 aria-label={option.label}
                 className={cn(optionClass, "group/swatch aspect-square")}
               >
                 <span
                   className="size-4 rounded-full ring-1 ring-black/10 ring-inset transition-shadow group-data-checked/swatch:ring-2 group-data-checked/swatch:ring-foreground/80 group-data-checked/swatch:ring-offset-2 group-data-checked/swatch:ring-offset-accent dark:ring-white/15"
-                  style={{ backgroundColor: option.swatch }}
+                  style={{ background: option.swatch }}
                 />
               </MenuPrimitive.RadioItem>
             ))}
@@ -113,6 +144,7 @@ export function SettingsMenu() {
               setNotificationSound(checked);
               // Ao ligar, uma amostra (e o clique já libera o áudio nesta aba).
               if (checked) previewNotificationSound();
+              else reportAchievement({ type: "sound.off" });
             }}
             icon={sound ? Volume2Icon : VolumeXIcon}
             label="Som dos avisos"
@@ -122,6 +154,7 @@ export function SettingsMenu() {
             onCheckedChange={(checked) => {
               setCelebrate(checked);
               if (checked) previewCelebration({ force: true });
+              else reportAchievement({ type: "celebrate.off" });
             }}
             icon={PartyPopperIcon}
             label="Comemorar entregas concluídas"

@@ -11,7 +11,9 @@ import { session, whiteboard } from "@/db/schema";
 import type { AuditChanges } from "@/lib/audit";
 import { auth } from "@/lib/auth";
 import { captureResetDelivery } from "@/lib/auth-config";
-import { isEmailConfigured } from "@/lib/email";
+import { env } from "@/env";
+import { emailDelivery, isEmailConfigured, sendEmail } from "@/lib/email";
+import { welcomeEmail } from "@/lib/email/templates";
 import { generatePassword } from "@/lib/password";
 import { getAdminSession } from "@/lib/session";
 import { PASSWORD_RESET_EXPIRES_IN_HOURS } from "@/lib/users";
@@ -32,8 +34,17 @@ import { disconnectRealtimeAfter } from "@/server/realtime";
 import { countActiveSessions, findUserById, isEmailTaken } from "@/server/users";
 
 export type ActionResult =
-  | { ok: true; message: string; /** Só ao criar usuário sem senha. */ generatedPassword?: string }
+  | {
+      ok: true;
+      message: string;
+      /** Só ao criar usuário sem senha. */
+      generatedPassword?: string;
+      /** Só ao criar: o e-mail de boas-vindas saiu, falhou ou não foi pedido. */
+      welcomeEmail?: WelcomeEmailStatus;
+    }
   | { ok: false; error: string; fieldErrors?: Record<string, string[] | undefined> };
+
+type WelcomeEmailStatus = "sent" | "failed" | "skipped";
 
 const FORBIDDEN: ActionResult = { ok: false, error: "Você não tem permissão para esta ação." };
 const NOT_FOUND: ActionResult = { ok: false, error: "Usuário não encontrado." };
@@ -95,7 +106,7 @@ export async function createUser(input: CreateUserInput): Promise<ActionResult> 
 
   const parsed = createUserSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
-  const { name, email, role } = parsed.data;
+  const { name, email, role, sendWelcome } = parsed.data;
   const passwordGenerated = !parsed.data.password;
   const password = parsed.data.password ?? generatePassword();
 
@@ -107,27 +118,52 @@ export async function createUser(input: CreateUserInput): Promise<ActionResult> 
     };
   }
 
+  let created: { id: string; email: string };
   try {
-    const { user: created } = await auth.api.createUser({
+    ({ user: created } = await auth.api.createUser({
       body: { name, email, password, role, data: { emailVerified: true } },
       headers: ctx.headers,
-    });
-    await recordAudit({
-      action: "user.created",
-      actor: ctx.actor,
-      entity: userEntity(created),
-      metadata: { name, role, passwordGenerated },
-      ...ctx.meta,
-    });
+    }));
   } catch (error) {
     return failure(error, "Não foi possível criar o usuário.");
   }
 
+  // A conta já existe: se o e-mail falhar, o admin ainda tem a senha para repassar.
+  let welcome: WelcomeEmailStatus = "skipped";
+  if (sendWelcome && isEmailConfigured()) {
+    try {
+      await sendEmail(
+        welcomeEmail({ to: email, name, password, loginUrl: `${env.BETTER_AUTH_URL}/login`, invitedBy: ctx.actor.name }),
+      );
+      welcome = "sent";
+    } catch (error) {
+      console.error("[email] falha no envio das boas-vindas", error);
+      welcome = "failed";
+    }
+  }
+  // A senha nunca vai para a auditoria; só se o acesso foi por e-mail.
+  await recordAudit({
+    action: "user.created",
+    actor: ctx.actor,
+    entity: userEntity(created),
+    metadata: { name, role, passwordGenerated, welcomeEmail: welcome },
+    ...ctx.meta,
+  });
+
   refresh();
+  const delivered =
+    welcome === "sent"
+      ? emailDelivery() === "console"
+        ? " O e-mail de boas-vindas aparece no terminal do servidor (desenvolvimento)."
+        : ` Enviamos o acesso para ${email}.`
+      : welcome === "failed"
+        ? " O e-mail de boas-vindas não foi enviado: repasse o acesso por outro canal."
+        : "";
   return {
     ok: true,
-    message: `${name} foi adicionado.`,
+    message: `${name} foi adicionado.${delivered}`,
     generatedPassword: passwordGenerated ? password : undefined,
+    welcomeEmail: welcome,
   };
 }
 
@@ -274,9 +310,9 @@ export async function sendPasswordReset(input: { userId: string }): Promise<Acti
   return {
     ok: true,
     message:
-      process.env.NODE_ENV === "production"
-        ? `Link enviado para ${target.email}.`
-        : "Link gerado. Em desenvolvimento, o e-mail aparece no terminal do servidor.",
+      emailDelivery() === "console"
+        ? "Link gerado. Sem SMTP em desenvolvimento, o e-mail aparece no terminal do servidor."
+        : `Link enviado para ${target.email}.`,
   };
 }
 

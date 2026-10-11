@@ -13,7 +13,8 @@ export function ChatRefresher() {
   const router = useRouter();
 
   useRealtimeEvent((event) => {
-    if (event.type === "chat.message" || event.type === "chat.deleted") router.refresh();
+    // Mensagem nova ou apagada, reação ou fixada mudou.
+    if (event.type === "chat.message" || event.type === "chat.deleted" || event.type === "chat.updated") router.refresh();
     // Li em outra aba: as não lidas da lista mudam.
     if (event.type === "chat.read" && event.userId === getRealtimeState().userId) router.refresh();
   });

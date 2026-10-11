@@ -35,6 +35,10 @@
   --color-success-ink: var(--success-ink);
   --color-warning: var(--warning);
   --color-warning-ink: var(--warning-ink);
+  --color-rarity-common: var(--rarity-common);
+  --color-rarity-rare: var(--rarity-rare);
+  --color-rarity-epic: var(--rarity-epic);
+  --color-rarity-legendary: var(--rarity-legendary);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -104,6 +108,11 @@
   --success-ink: oklch(0.5 0.12 155);
   --warning: oklch(0.7 0.16 65);
   --warning-ink: oklch(0.52 0.12 60);
+  /* Raridade das conquistas (rótulo e contorno do emoji): texto >= 4.5:1 sobre o fundo. */
+  --rarity-common: oklch(0.52 0.02 260);
+  --rarity-rare: oklch(0.52 0.18 255);
+  --rarity-epic: oklch(0.5 0.22 300);
+  --rarity-legendary: oklch(0.55 0.13 70);
   --border: oklch(0.915 0 0);
   --input: oklch(0.9 0 0);
   --ring: var(--primary);
@@ -151,6 +160,10 @@
   --success-ink: var(--success);
   --warning: oklch(0.78 0.15 70);
   --warning-ink: var(--warning);
+  --rarity-common: oklch(0.74 0.02 260);
+  --rarity-rare: oklch(0.74 0.13 255);
+  --rarity-epic: oklch(0.74 0.15 300);
+  --rarity-legendary: oklch(0.82 0.14 85);
   --border: oklch(1 0 0 / 9%);
   --input: oklch(1 0 0 / 13%);
   --primary-soft: color-mix(in oklab, var(--primary) 16%, var(--background));
@@ -226,6 +239,36 @@
 .dark[data-accent="violet"]:not([data-fixed-theme]) {
   --primary: oklch(0.565 0.23 293);
   --primary-ink: oklch(0.74 0.14 293);
+}
+
+/*
+ * Cor secreta "Arco-íris" (conquista "Além do Arco-Íris"): o destaque passa por
+ * todas as cores, devagar. Muda em degraus de 1 s (e não a cada quadro) para não
+ * recalcular a página inteira o tempo todo. Com prefers-reduced-motion, fica parada.
+ */
+@property --rainbow-hue {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 17;
+}
+[data-accent="rainbow"]:not([data-fixed-theme]) {
+  --primary: oklch(0.53 0.2 var(--rainbow-hue));
+  --primary-foreground: oklch(0.985 0 0);
+  animation: wb-rainbow 90s steps(90) infinite;
+}
+.dark[data-accent="rainbow"]:not([data-fixed-theme]) {
+  --primary: oklch(0.58 0.19 var(--rainbow-hue));
+  --primary-ink: oklch(0.76 0.13 var(--rainbow-hue));
+}
+@keyframes wb-rainbow {
+  to {
+    --rainbow-hue: 377;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-accent="rainbow"] {
+    animation: none;
+  }
 }
 
 /*

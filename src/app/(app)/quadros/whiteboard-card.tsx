@@ -6,6 +6,7 @@ import { UserAvatar } from "@/components/user-avatar";
 import { cn } from "@/lib/utils";
 import { WHITEBOARD_ACCESS, type WhiteboardAccess } from "@/lib/whiteboards";
 import type { WhiteboardCardView } from "./types";
+import { WhiteboardCardMenu } from "./whiteboard-card-menu";
 
 const ACCESS_ICONS: Record<WhiteboardAccess, typeof LockIcon> = {
   private: LockIcon,
@@ -53,6 +54,16 @@ function firstName(name: string) {
 
 export function WhiteboardCard({ board }: { board: WhiteboardCardView }) {
   const people = [...(board.owner ? [board.owner] : []), ...board.members.filter((member) => member.id !== board.owner?.id)];
+  return (
+    // O menu fica fora do link (botão dentro de link não vale), por cima da miniatura.
+    <div className="relative">
+      <WhiteboardCardLink board={board} people={people} />
+      {board.canDelete && <WhiteboardCardMenu id={board.id} title={board.title} className="absolute top-2 right-2" />}
+    </div>
+  );
+}
+
+function WhiteboardCardLink({ board, people }: { board: WhiteboardCardView; people: WhiteboardCardView["members"] }) {
   return (
     <Link
       href={`/quadros/${board.id}`}

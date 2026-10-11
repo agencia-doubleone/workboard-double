@@ -1,7 +1,9 @@
 import { formatCalendarDate, formatDate, formatDateTime, formatMessageTime, formatTime } from "@/lib/format";
 import { isOverdue, splitMentions } from "@/lib/jobs";
+import { messageEffectOf, toReactionViews, type PinnedMessageView } from "@/lib/messages";
 import type { JobListItem, JobMessageItem, JobPerson, JobRecord, JobStatusRecord } from "@/server/jobs";
 import { resolveMediaUrl, toAttachmentView } from "@/server/media";
+import type { MessageExtras, PinnedMessage } from "@/server/messages";
 import type { JobFormValues, JobMessageView, JobPersonView, JobRow, JobStatusOption } from "./types";
 
 export function toPersonView(person: JobPerson): JobPersonView {
@@ -15,6 +17,7 @@ export function toStatusOption(status: JobStatusRecord): JobStatusOption {
     textColor: status.textColor,
     backgroundColor: status.backgroundColor,
     isFinal: status.isFinal,
+    isCanceled: status.isCanceled,
     isDefault: status.isDefault,
   };
 }
@@ -80,7 +83,7 @@ export function parsePit(value: string) {
 
 export function toMessageView(
   message: JobMessageItem,
-  ctx: { viewerId: string; isAdmin: boolean; names: Map<string, string>; now: Date },
+  ctx: { viewerId: string; isAdmin: boolean; names: Map<string, string>; now: Date; extras: MessageExtras },
 ): JobMessageView {
   return {
     id: message.id,
@@ -90,9 +93,31 @@ export function toMessageView(
     parts: splitMentions(message.body).map((part) =>
       part.type === "mention" ? { ...part, name: ctx.names.get(part.userId) ?? "alguém" } : part,
     ),
+    effect: messageEffectOf(message.body, message.attachments.length),
     createdAt: message.createdAt.toISOString(),
     time: { label: formatMessageTime(message.createdAt, ctx.now), absolute: formatDateTime(message.createdAt) },
     attachments: message.attachments.map(toAttachmentView),
     canDelete: message.authorId === ctx.viewerId || ctx.isAdmin,
+    reactions: toReactionViews(ctx.extras.reactions.get(message.id) ?? [], ctx.viewerId),
+    pinned: Boolean(message.pinnedAt),
+    favorite: ctx.extras.favorites.has(message.id),
+  };
+}
+
+/** Texto corrido da mensagem, com as menções como "@Nome". */
+export function mentionsAsText(body: string, names: Map<string, string>) {
+  return splitMentions(body)
+    .map((part) => (part.type === "mention" ? `@${names.get(part.userId) ?? "alguém"}` : part.text))
+    .join("");
+}
+
+export function toPinnedMessageView(message: PinnedMessage, names: Map<string, string>): PinnedMessageView {
+  return {
+    id: message.id,
+    authorName: message.authorName,
+    text: mentionsAsText(message.body, names),
+    attachments: message.attachments,
+    time: formatDateTime(message.createdAt),
+    pinnedBy: message.pinnedByName,
   };
 }

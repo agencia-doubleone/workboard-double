@@ -16,11 +16,14 @@ import { toConversationListItem } from "./present";
 export async function ChatScreen({
   viewerId,
   activeId,
+  view,
   children,
 }: {
   viewerId: string;
   /** Conversa aberta (destacada na lista, mesmo ainda sem mensagens). */
   activeId?: string;
+  /** Outra tela no lugar da conversa (as favoritas). */
+  view?: "favorites";
   children: React.ReactNode;
 }) {
   const [conversations, team] = await Promise.all([
@@ -41,9 +44,10 @@ export async function ChatScreen({
         conversations={conversations.map((item) => toConversationListItem(item, { viewerId, now }))}
         people={people}
         activeId={activeId}
-        className={activeId ? "hidden md:flex" : "flex"}
+        favoritesActive={view === "favorites"}
+        className={activeId || view ? "hidden md:flex" : "flex"}
       />
-      <section className={cn("min-w-0 flex-1 flex-col", activeId ? "flex" : "hidden md:flex")}>{children}</section>
+      <section className={cn("min-w-0 flex-1 flex-col", activeId || view ? "flex" : "hidden md:flex")}>{children}</section>
     </div>
   );
 }

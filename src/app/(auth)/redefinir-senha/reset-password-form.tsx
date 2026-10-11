@@ -43,7 +43,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
       if (error) {
         setFormError(
           error.code === "INVALID_TOKEN"
-            ? "Este link já foi usado ou expirou. Peça um novo a um administrador."
+            ? "Este link já foi usado ou expirou. Peça um novo em “Esqueceu a senha?”, no login, ou a um administrador."
             : "Não foi possível redefinir a senha. Tente novamente.",
         );
         return;

@@ -68,9 +68,17 @@ async function SheetContent({ searchParams }: { searchParams: PageProps<"/minha-
     redirect(jobListHref({ ...params, pagina: result.pageCount }, "/minha-planilha"));
   }
   const today = todayInSaoPaulo();
-  const filtered = Boolean(params.busca || params.status || params.cliente || params.situacao !== DEFAULT_JOB_SITUATION);
-  const situation = JOB_SITUATIONS[DEFAULT_JOB_SITUATION].toLowerCase();
+  const canceledView = params.situacao === "cancelados";
+  const filtered = Boolean(
+    params.busca || params.status || params.cliente || (params.situacao !== DEFAULT_JOB_SITUATION && !canceledView),
+  );
+  const situation = canceledView ? "cancelado" : JOB_SITUATIONS[DEFAULT_JOB_SITUATION].toLowerCase();
   const statusOptions = statuses.map(toStatusOption);
+  // Quadro: os status de cancelamento só viram coluna no recorte "Cancelados" (e lá, só eles).
+  // Com filtro de status, só a coluna dele.
+  const boardStatuses = statusOptions.filter(
+    (status) => status.isCanceled === canceledView && (!params.status || status.id === params.status),
+  );
   const rows = result.rows.map((item) => toJobRow(item, today));
 
   return (
@@ -106,8 +114,7 @@ async function SheetContent({ searchParams }: { searchParams: PageProps<"/minha-
           <>
             <JobsBoard
               rows={rows}
-              // Com filtro de status, só a coluna dele.
-              statuses={params.status ? statusOptions.filter((status) => status.id === params.status) : statusOptions}
+              statuses={boardStatuses}
               ownerId={ownerId}
               finalColumnsAreDropOnly={params.situacao === "abertos"}
             />
@@ -132,7 +139,9 @@ async function SheetContent({ searchParams }: { searchParams: PageProps<"/minha-
                   }
                 : {
                     title: `Nenhum trabalho ${situation}`,
-                    description: "Quando incluírem você num trabalho, ele aparece aqui.",
+                    description: canceledView
+                      ? "Trabalho cancelado sai da planilha e fica aqui."
+                      : "Quando incluírem você num trabalho, ele aparece aqui.",
                   }
             }
           />

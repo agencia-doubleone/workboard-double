@@ -16,6 +16,8 @@ export const sendChatMessageSchema = z
       .array(z.uuid())
       .max(MESSAGE_ATTACHMENTS_MAX, `No máximo ${MESSAGE_ATTACHMENTS_MAX} anexos por mensagem.`)
       .transform((ids) => [...new Set(ids)]),
+    /** Algum anexo é imagem colada com Ctrl+V (conquista "Print ou Não Aconteceu"). */
+    pastedImage: z.boolean().optional(),
   })
   .refine((data) => data.body.length > 0 || data.attachmentIds.length > 0, {
     path: ["body"],

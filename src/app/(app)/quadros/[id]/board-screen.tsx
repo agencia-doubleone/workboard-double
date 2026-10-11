@@ -11,8 +11,9 @@ import {
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { reportAchievement } from "@/components/achievements/achievement-toasts";
 import { Hint } from "@/components/hint";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -70,6 +71,14 @@ export function BoardScreen({ board, elements, cursor, viewerId, people, mediaBa
     () => Object.fromEntries(people.map((person) => [person.id, { name: person.name, imageUrl: person.imageUrl }])),
     [people],
   );
+
+  // Mais 2 pessoas no quadro ao mesmo tempo: "Brainstorm" (avisa uma vez por quadro aberto).
+  const crowdReported = useRef(false);
+  useEffect(() => {
+    if (crowdReported.current || presence.length < 2) return;
+    crowdReported.current = true;
+    reportAchievement({ type: "board.crowd", boardId: board.id });
+  }, [presence, board.id]);
 
   return (
     // Ocupa toda a área de conteúdo (o <main> do shell é o pai posicionado), sem as margens das páginas.

@@ -12,8 +12,8 @@ import { useModKey } from "@/hooks/use-mod-key";
 import { getNavTitle } from "./nav-config";
 import { useShell } from "./shell-provider";
 
-/** Header do painel: recolher a sidebar, título da página, o sino e a conta (userMenu). */
-export function AppHeader({ userMenu }: { userMenu: React.ReactNode }) {
+/** Header do painel: recolher a sidebar, título da página, a busca, o sino e a conta (userMenu). */
+export function AppHeader({ userMenu, search }: { userMenu: React.ReactNode; search?: React.ReactNode }) {
   const { toggleSidebar } = useShell();
   const { sidebarCollapsed } = usePreferences();
   const modKey = useModKey();
@@ -41,6 +41,7 @@ export function AppHeader({ userMenu }: { userMenu: React.ReactNode }) {
         </Suspense>
       </h2>
       <div className="ml-auto flex items-center gap-3 pr-1">
+        {search}
         <NotificationBell />
         {userMenu}
       </div>

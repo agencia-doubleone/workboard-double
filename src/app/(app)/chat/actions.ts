@@ -10,6 +10,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { chatConversation, chatMember, chatMessage, chatMessageAttachment } from "@/db/schema";
 import { CHAT_PAGE_SIZE } from "@/lib/chat";
+import { normalizeMessageBody, PINNED_MESSAGES_MAX, toReactionViews, type MessageUpdateResult } from "@/lib/messages";
 import { getSession } from "@/lib/session";
 import {
   chatMessageTargetSchema,
@@ -19,6 +20,15 @@ import {
   startConversationSchema,
   type SendChatMessageInput,
 } from "@/lib/validations/chat";
+import { messageFavoriteSchema, messagePinSchema, messageReactionSchema } from "@/lib/validations/messages";
+import {
+  achievementsAfter,
+  onMessageDeleted,
+  onMessageFavorited,
+  onMessagePinned,
+  onMessageSent,
+  onReactionAdded,
+} from "@/server/achievements";
 import { getRequestMeta } from "@/server/audit";
 import {
   findChatMessage,
@@ -28,16 +38,25 @@ import {
   listChatMessages,
   markConversationRead as markRead,
   openConversation,
+  type ChatConversationRecord,
 } from "@/server/chat";
 import { filterActiveUserIds } from "@/server/jobs";
 import { deleteMedia, deleteMediaByKey, findMediaById, resolveMediaUrl } from "@/server/media";
+import {
+  countPinnedMessages,
+  listMessageExtras,
+  setMessagePinned,
+  toggleFavorite,
+  toggleReaction,
+} from "@/server/messages";
 import { publishRealtimeAfter } from "@/server/realtime";
 import { messagePreview, toChatMessageView } from "./present";
 
 // Chat 1:1. Só quem está na conversa lê, escreve e marca como lida; nem admins
 // veem as conversas dos outros. Cada mensagem avisa as duas pessoas em tempo
-// real (a outra recebe o aviso; a própria atualiza as outras abas). Mensagens
-// não vão para a auditoria.
+// real (a outra recebe o aviso; a própria atualiza as outras abas). Reações e
+// fixadas valem para as duas pessoas; favoritas são de cada uma. Mensagens não
+// vão para a auditoria, mas contam para as conquistas (src/server/achievements).
 
 export type ChatActionResult =
   | { ok: true; conversationId?: string }
@@ -74,7 +93,9 @@ export async function sendChatMessage(input: SendChatMessageInput): Promise<Chat
   if (!parsed.success) {
     return { ok: false, error: "Revise a mensagem.", fieldErrors: z.flattenError(parsed.error).fieldErrors };
   }
-  const { conversationId, body, attachmentIds } = parsed.data;
+  const { conversationId, attachmentIds } = parsed.data;
+  // "/party" e companhia ficam guardados sempre do mesmo jeito.
+  const body = normalizeMessageBody(parsed.data.body);
   const conversation = await findConversation(db, conversationId, ctx.actor.id);
   if (!conversation) return NOT_FOUND;
   if (!conversation.other) return { ok: false, error: "Essa pessoa não está mais no Workboard." };
@@ -118,6 +139,17 @@ export async function sendChatMessage(input: SendChatMessageInput): Promise<Chat
     author: { id: ctx.actor.id, name: ctx.actor.name, imageUrl: resolveMediaUrl(ctx.actor.image) },
     preview: messagePreview(body, attachmentIds.length),
   });
+  achievementsAfter("mensagem do chat", (database) =>
+    onMessageSent(database, {
+      kind: "chat",
+      authorId: ctx.actor.id,
+      body,
+      attachments: attachmentIds.length,
+      pastedImage: parsed.data.pastedImage,
+      conversationId,
+      at: now,
+    }),
+  );
   refresh();
   return { ok: true };
 }
@@ -156,7 +188,11 @@ export async function loadOlderChatMessages(input: { conversationId: string; bef
     before: new Date(parsed.data.before),
   });
   const now = new Date();
-  return { messages: messages.map((message) => toChatMessageView(message, { viewerId: ctx.actor.id, now })), hasMore };
+  const extras = await listMessageExtras(db, "chat", messages.map((message) => message.id), ctx.actor.id);
+  return {
+    messages: messages.map((message) => toChatMessageView(message, { viewerId: ctx.actor.id, now, extras })),
+    hasMore,
+  };
 }
 
 /** Só quem escreveu apaga (nem admins: a conversa é das duas pessoas). Os anexos saem do CDN. */
@@ -188,8 +224,98 @@ export async function deleteChatMessage(input: { messageId: string }): Promise<C
     conversationId: conversation.id,
     messageId: found.id,
   });
+  achievementsAfter("mensagem apagada", (database) =>
+    onMessageDeleted(database, { authorId: found.authorId, actorId: ctx.actor.id }),
+  );
   refresh();
   return { ok: true };
+}
+
+/** Mensagem de uma conversa da qual quem pede faz parte (null para os outros). */
+async function findMemberMessage(messageId: string, actorId: string) {
+  const message = await findChatMessage(db, messageId);
+  const conversation = message ? await findConversation(db, message.conversationId, actorId) : null;
+  return message && conversation ? { message, conversation } : null;
+}
+
+/** Conversa só para leitura: a outra pessoa saiu ou foi desativada (dá para favoritar, não para reagir ou fixar). */
+function isReadOnly(conversation: ChatConversationRecord) {
+  return !conversation.other || conversation.other.banned;
+}
+
+/** Avisa as duas pessoas (e as outras abas de quem mexeu) que reações ou fixadas mudaram. */
+function publishConversationUpdate(conversation: ChatConversationRecord, actorId: string) {
+  publishRealtimeAfter([actorId, ...(conversation.other ? [conversation.other.id] : [])], {
+    type: "chat.updated",
+    conversationId: conversation.id,
+  });
+}
+
+const MESSAGE_NOT_FOUND = { ok: false, error: "Mensagem não encontrada." } as const;
+const READ_ONLY = { ok: false, error: "A conversa está só para leitura." } as const;
+
+/** Liga ou desliga uma reação. Devolve as reações da mensagem como ficaram. */
+export async function reactToChatMessage(input: { messageId: string; emoji: string }): Promise<MessageUpdateResult> {
+  const ctx = await getChatContext();
+  if (!ctx) return UNAUTHENTICATED;
+  const parsed = messageReactionSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Reação inválida." };
+  const target = await findMemberMessage(parsed.data.messageId, ctx.actor.id);
+  if (!target) return MESSAGE_NOT_FOUND;
+  if (isReadOnly(target.conversation)) return READ_ONLY;
+
+  const added = await toggleReaction(db, "chat", { messageId: target.message.id, userId: ctx.actor.id, emoji: parsed.data.emoji });
+  const { reactions } = await listMessageExtras(db, "chat", [target.message.id], ctx.actor.id);
+  publishConversationUpdate(target.conversation, ctx.actor.id);
+  if (added) {
+    achievementsAfter("reação", (database) =>
+      onReactionAdded(database, { kind: "chat", messageId: target.message.id, userId: ctx.actor.id }),
+    );
+  }
+  refresh();
+  return { ok: true, reactions: toReactionViews(reactions.get(target.message.id) ?? [], ctx.actor.id) };
+}
+
+/** Fixa no topo da conversa (para as duas pessoas) ou desafixa. */
+export async function setChatMessagePinned(input: { messageId: string; pinned: boolean }): Promise<MessageUpdateResult> {
+  const ctx = await getChatContext();
+  if (!ctx) return UNAUTHENTICATED;
+  const parsed = messagePinSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Mensagem inválida." };
+  const target = await findMemberMessage(parsed.data.messageId, ctx.actor.id);
+  if (!target) return MESSAGE_NOT_FOUND;
+  if (isReadOnly(target.conversation)) return READ_ONLY;
+  const { pinned } = parsed.data;
+  if (pinned && !target.message.pinnedAt) {
+    if ((await countPinnedMessages(db, "chat", target.conversation.id)) >= PINNED_MESSAGES_MAX) {
+      return { ok: false, error: `Já há ${PINNED_MESSAGES_MAX} mensagens fixadas. Desafixe uma antes.` };
+    }
+  }
+
+  await setMessagePinned(db, "chat", target.message.id, pinned ? ctx.actor : null);
+  publishConversationUpdate(target.conversation, ctx.actor.id);
+  if (pinned && !target.message.pinnedAt) {
+    achievementsAfter("mensagem fixada", (database) =>
+      onMessagePinned(database, { kind: "chat", messageId: target.message.id, actorId: ctx.actor.id }),
+    );
+  }
+  refresh();
+  return { ok: true, pinned };
+}
+
+/** Guarda nas favoritas de quem pede (só ela vê), ou tira. */
+export async function toggleChatFavorite(input: { messageId: string }): Promise<MessageUpdateResult> {
+  const ctx = await getChatContext();
+  if (!ctx) return UNAUTHENTICATED;
+  const parsed = messageFavoriteSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Mensagem inválida." };
+  const target = await findMemberMessage(parsed.data.messageId, ctx.actor.id);
+  if (!target) return MESSAGE_NOT_FOUND;
+
+  const favorite = await toggleFavorite(db, "chat", { messageId: target.message.id, userId: ctx.actor.id });
+  if (favorite) achievementsAfter("favorita", (database) => onMessageFavorited(database, { userId: ctx.actor.id }));
+  refresh();
+  return { ok: true, favorite };
 }
 
 /** Anexo enviado e tirado do rascunho antes de mandar a mensagem: sai do CDN. */

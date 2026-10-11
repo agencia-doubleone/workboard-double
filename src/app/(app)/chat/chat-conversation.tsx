@@ -7,12 +7,14 @@ import {
   Loader2Icon,
   MessagesSquareIcon,
   PaperclipIcon,
+  PinIcon,
   SendHorizontalIcon,
+  StarIcon,
   Trash2Icon,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
+import { Fragment, useEffect, useLayoutEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Hint } from "@/components/hint";
@@ -20,6 +22,15 @@ import { HoldToConfirmButton } from "@/components/hold-to-confirm-button";
 import { PendingFileChip, useAttachmentUploads } from "@/components/messages/attachment-uploads";
 import { Linkified } from "@/components/messages/linkified";
 import { MessageAttachments } from "@/components/messages/message-attachments";
+import { playMessageEffect, useLiveMessageEffects } from "@/components/messages/message-effects";
+import { SlashCommandList, useSlashCommands } from "@/components/messages/slash-commands";
+import {
+  EffectLine,
+  jumpToHashMessage,
+  MessageToolbar,
+  PinnedMessages,
+  ReactionList,
+} from "@/components/messages/message-tools";
 import {
   getRealtimeState,
   sendRealtime,
@@ -41,13 +52,17 @@ import { UserAvatar } from "@/components/user-avatar";
 import { TYPING_SIGNAL_MS } from "@/lib/chat";
 import { MESSAGE_ATTACHMENTS_MAX, MESSAGE_MAX_LENGTH } from "@/lib/jobs";
 import { MEDIA_ACCEPT } from "@/lib/media";
+import { messageElementId, toggleReactionView, type MessageUpdateResult, type PinnedMessageView } from "@/lib/messages";
 import { cn } from "@/lib/utils";
 import {
   deleteChatMessage,
   discardChatAttachment,
   loadOlderChatMessages,
   markConversationRead,
+  reactToChatMessage,
   sendChatMessage,
+  setChatMessagePinned,
+  toggleChatFavorite,
 } from "./actions";
 import type { ChatMessageView, ConversationView } from "./types";
 
@@ -58,12 +73,14 @@ type ChatConversationProps = {
   conversation: ConversationView;
   /** As mais recentes, em ordem de envio. */
   messages: ChatMessageView[];
+  /** As fixadas (podem ser mais antigas que as carregadas). */
+  pinned: PinnedMessageView[];
   /** Há mensagens antes das carregadas. */
   hasMore: boolean;
   uploadsEnabled: boolean;
 };
 
-export function ChatConversation({ conversation, messages, hasMore, uploadsEnabled }: ChatConversationProps) {
+export function ChatConversation({ conversation, messages, pinned, hasMore, uploadsEnabled }: ChatConversationProps) {
   const router = useRouter();
   const { other } = conversation;
   const otherTyping = useIsTyping(other?.id);
@@ -78,7 +95,14 @@ export function ChatConversation({ conversation, messages, hasMore, uploadsEnabl
     setServerMessages(messages);
     if (dropped.length > 0) setHistory((current) => [...current, ...dropped]);
   }
-  const all = [...history, ...messages];
+  const loaded = [...history, ...messages];
+  // A minha reação aparece na hora; a resposta do servidor (e o refresh) confirma.
+  const [all, toggleOptimisticReaction] = useOptimistic(loaded, (current, change: { id: string; emoji: string }) =>
+    current.map((message) =>
+      message.id === change.id ? { ...message, reactions: toggleReactionView(message.reactions, change.emoji) } : message,
+    ),
+  );
+  const [, startUpdating] = useTransition();
   const [olderHasMore, setOlderHasMore] = useState(hasMore);
   const [loadingOlder, startLoadingOlder] = useTransition();
 
@@ -102,7 +126,9 @@ export function ChatConversation({ conversation, messages, hasMore, uploadsEnabl
 
   const lastId = all.at(-1)?.id;
   const lastIncoming = all.findLast((message) => !message.mine);
-  const lastMine = all.findLast((message) => message.mine);
+  // O "Visto" fica na minha última mensagem de texto (a linha de um comando não tem rodapé).
+  const lastMine = all.findLast((message) => message.mine && !message.effect);
+  useLiveMessageEffects(all, scrollRef);
 
   useRealtimeEvent((event) => {
     if (event.type === "chat.read" && event.conversationId === conversation.id && event.userId === other?.id) {
@@ -139,6 +165,8 @@ export function ChatConversation({ conversation, messages, hasMore, uploadsEnabl
     if (!container) return;
     if (!mounted.current) {
       mounted.current = true;
+      // Veio de um link para uma mensagem (das favoritas): vai até ela.
+      if (jumpToHashMessage()) return;
       const divider = dividerRef.current;
       container.scrollTop = divider ? divider.offsetTop - 12 : container.scrollHeight;
       return;
@@ -182,6 +210,60 @@ export function ChatConversation({ conversation, messages, hasMore, uploadsEnabl
 
   const canWrite = Boolean(other?.active);
 
+  /**
+   * Roda a action e, se der certo, aplica o estado novo também nas mensagens
+   * guardadas aqui (as anteriores não voltam no refresh da página).
+   */
+  function update(
+    messageId: string,
+    run: () => Promise<MessageUpdateResult>,
+    {
+      optimistic,
+      onDone,
+    }: { optimistic?: () => void; onDone?: (result: Extract<MessageUpdateResult, { ok: true }>) => void } = {},
+  ) {
+    startUpdating(async () => {
+      optimistic?.();
+      const result = await run().catch(() => null);
+      if (!result?.ok) {
+        toast.error(result && !result.ok ? result.error : "Não foi possível salvar.");
+        return;
+      }
+      const patch: Partial<ChatMessageView> = {};
+      if (result.reactions) patch.reactions = result.reactions;
+      if (result.pinned !== undefined) patch.pinned = result.pinned;
+      if (result.favorite !== undefined) patch.favorite = result.favorite;
+      setHistory((current) => current.map((message) => (message.id === messageId ? { ...message, ...patch } : message)));
+      onDone?.(result);
+    });
+  }
+
+  function react(messageId: string, emoji: string) {
+    update(messageId, () => reactToChatMessage({ messageId, emoji }), {
+      optimistic: () => toggleOptimisticReaction({ id: messageId, emoji }),
+    });
+  }
+
+  function setPinned(messageId: string, value: boolean) {
+    update(messageId, () => setChatMessagePinned({ messageId, pinned: value }), {
+      onDone: () => toast.success(value ? "Mensagem fixada no topo da conversa." : "Mensagem desafixada."),
+    });
+  }
+
+  function toggleFavorite(messageId: string) {
+    update(messageId, () => toggleChatFavorite({ messageId }), {
+      onDone: (result) =>
+        toast.success(result.favorite ? "Guardada nas favoritas." : "Tirada das favoritas.", {
+          action: result.favorite ? { label: "Ver favoritas", onClick: () => router.push("/chat/favoritas") } : undefined,
+        }),
+    });
+  }
+
+  function askDelete(message: ChatMessageView) {
+    setDeleteTarget(message);
+    setDeleteOpen(true);
+  }
+
   return (
     <>
       <header className="flex h-14 shrink-0 items-center gap-3 border-b px-3">
@@ -206,6 +288,8 @@ export function ChatConversation({ conversation, messages, hasMore, uploadsEnabl
           </p>
         </div>
       </header>
+
+      <PinnedMessages items={pinned} onUnpin={canWrite ? (id) => setPinned(id, false) : undefined} />
 
       <div
         ref={scrollRef}
@@ -242,13 +326,16 @@ export function ChatConversation({ conversation, messages, hasMore, uploadsEnabl
             const previous = all[index - 1];
             const next = all[index + 1];
             const newDay = previous?.day !== message.day;
+            // A linha de um comando ("/coffee") separa os blocos de balões.
             const sameAsPrevious =
               !newDay &&
               index !== firstUnread &&
+              !previous?.effect &&
               previous?.authorId === message.authorId &&
               Date.parse(message.createdAt) - Date.parse(previous.createdAt) < GROUP_MS;
             const endsGroup =
               !next ||
+              Boolean(next.effect) ||
               next.day !== message.day ||
               next.authorId !== message.authorId ||
               index + 1 === firstUnread ||
@@ -269,27 +356,39 @@ export function ChatConversation({ conversation, messages, hasMore, uploadsEnabl
                     <span className="h-px flex-1 bg-primary/40" />
                   </div>
                 )}
-                <MessageBubble
-                  message={message}
-                  spaced={!sameAsPrevious}
-                  footer={
-                    endsGroup ? (
-                      <MessageFooter
-                        time={message.time}
-                        absolute={message.absolute}
-                        seen={
-                          message.id === lastMine?.id && other
-                            ? Boolean(otherReadAt && message.createdAt <= otherReadAt)
-                            : undefined
-                        }
-                      />
-                    ) : null
-                  }
-                  onDelete={() => {
-                    setDeleteTarget(message);
-                    setDeleteOpen(true);
-                  }}
-                />
+                {message.effect ? (
+                  <EffectLine
+                    id={message.id}
+                    effect={message.effect}
+                    who={message.mine ? "Você" : message.authorName}
+                    time={message.time}
+                    onReplay={() => playMessageEffect(message.effect!, scrollRef.current)}
+                    onDelete={message.mine ? () => askDelete(message) : undefined}
+                  />
+                ) : (
+                  <MessageBubble
+                    message={message}
+                    spaced={!sameAsPrevious}
+                    canReact={canWrite}
+                    footer={
+                      endsGroup ? (
+                        <MessageFooter
+                          time={message.time}
+                          absolute={message.absolute}
+                          seen={
+                            message.id === lastMine?.id && other
+                              ? Boolean(otherReadAt && message.createdAt <= otherReadAt)
+                              : undefined
+                          }
+                        />
+                      ) : null
+                    }
+                    onReact={(emoji) => react(message.id, emoji)}
+                    onTogglePin={() => setPinned(message.id, !message.pinned)}
+                    onToggleFavorite={() => toggleFavorite(message.id)}
+                    onDelete={() => askDelete(message)}
+                  />
+                )}
               </Fragment>
             );
           })
@@ -321,22 +420,48 @@ export function ChatConversation({ conversation, messages, hasMore, uploadsEnabl
 function MessageBubble({
   message,
   spaced,
+  canReact,
   footer,
+  onReact,
+  onTogglePin,
+  onToggleFavorite,
   onDelete,
 }: {
   message: ChatMessageView;
   spaced: boolean;
+  /** Reagir e fixar (não numa conversa só para leitura). */
+  canReact: boolean;
   footer: React.ReactNode;
+  onReact: (emoji: string) => void;
+  onTogglePin: () => void;
+  onToggleFavorite: () => void;
   onDelete: () => void;
 }) {
   return (
     <div
+      id={messageElementId(message.id)}
       className={cn(
-        "group/message flex flex-col gap-1",
+        "group/message flex flex-col gap-1 rounded-lg",
         message.mine ? "items-end" : "items-start",
         spaced ? "mt-3 first:mt-0" : "mt-0.5",
       )}
     >
+      {(message.pinned || message.favorite) && (
+        <p className="flex items-center gap-2 px-1 text-[11px] text-muted-foreground">
+          {message.pinned && (
+            <span className="flex items-center gap-1">
+              <PinIcon aria-hidden="true" className="size-3 text-primary-ink" />
+              Fixada
+            </span>
+          )}
+          {message.favorite && (
+            <span className="flex items-center gap-1">
+              <StarIcon aria-hidden="true" className="size-3 fill-current text-warning" />
+              Favorita
+            </span>
+          )}
+        </p>
+      )}
       <div className={cn("flex max-w-[min(36rem,85%)] items-center gap-1", message.mine && "flex-row-reverse")}>
         <div className={cn("flex min-w-0 flex-col gap-1.5", message.mine ? "items-end" : "items-start")}>
           {message.text && (
@@ -349,11 +474,7 @@ function MessageBubble({
                   : "rounded-bl-md bg-muted text-foreground",
               )}
             >
-              {/* No balão na cor de destaque, o link fica na cor do texto (sublinhado). */}
-              <Linkified
-                text={message.text}
-                className={message.mine ? "break-all underline underline-offset-2" : undefined}
-              />
+              <Linkified text={message.text} onPrimary={message.mine} />
             </p>
           )}
           {message.attachments.length > 0 && (
@@ -362,20 +483,26 @@ function MessageBubble({
               className={message.mine ? "justify-end" : undefined}
             />
           )}
+          <ReactionList
+            reactions={message.reactions}
+            onToggle={onReact}
+            disabled={!canReact}
+            className={message.mine ? "justify-end" : undefined}
+          />
         </div>
-        {message.mine && (
-          <Hint label="Excluir mensagem">
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label="Excluir mensagem"
-              onClick={onDelete}
-              className="shrink-0 text-muted-foreground opacity-0 group-hover/message:opacity-100 focus-visible:opacity-100"
-            >
-              <Trash2Icon />
-            </Button>
-          </Hint>
-        )}
+        <MessageToolbar
+          pinned={message.pinned}
+          favorite={message.favorite}
+          text={message.text}
+          canReact={canReact}
+          onReact={onReact}
+          onTogglePin={onTogglePin}
+          onToggleFavorite={onToggleFavorite}
+          // Só quem escreveu apaga (a conversa é das duas pessoas).
+          onDelete={message.mine ? onDelete : undefined}
+          align={message.mine ? "end" : "start"}
+          className={message.mine ? "flex-row-reverse" : undefined}
+        />
       </div>
       {footer}
     </div>
@@ -438,13 +565,14 @@ function ChatComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastSignal = useRef(0);
-  const { files, readyIds, uploading, full, addFiles, removeFile, clearSent } = useAttachmentUploads({
+  const { files, readyIds, pastedImage, uploading, full, addFiles, removeFile, clearSent } = useAttachmentUploads({
     folder: "chat",
     enabled: uploadsEnabled,
     max: MESSAGE_ATTACHMENTS_MAX,
     discard: discardChatAttachment,
   });
   const canSend = !isPending && !uploading && (text.trim().length > 0 || readyIds.length > 0);
+  const commands = useSlashCommands(text, setText);
 
   function signalTyping() {
     const now = Date.now();
@@ -459,7 +587,7 @@ function ChatComposer({
     const body = text.trim();
     const attachmentIds = readyIds;
     startTransition(async () => {
-      const result = await sendChatMessage({ conversationId, body, attachmentIds });
+      const result = await sendChatMessage({ conversationId, body, attachmentIds, pastedImage });
       if (!result.ok) {
         toast.error(result.fieldErrors?.body?.[0] ?? result.error);
         return;
@@ -489,8 +617,16 @@ function ChatComposer({
         setDragging(false);
         addFiles([...event.dataTransfer.files]);
       }}
-      className={cn("shrink-0 border-t p-3 transition-colors", dragging && "bg-primary-soft/40")}
+      className={cn("relative shrink-0 border-t p-3 transition-colors", dragging && "bg-primary-soft/40")}
     >
+      {commands.open && (
+        <SlashCommandList
+          candidates={commands.candidates}
+          active={commands.active}
+          onHover={commands.setActive}
+          onPick={commands.pick}
+        />
+      )}
       <div className="flex flex-col rounded-lg border border-input bg-background shadow-control transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/20 dark:bg-input/30">
         {files.length > 0 && (
           <div className="flex flex-wrap gap-2 border-b p-2">
@@ -538,16 +674,18 @@ function ChatComposer({
             }}
             onKeyDown={(event) => {
               if (event.nativeEvent.isComposing) return;
+              if (commands.handleKeyDown(event)) return;
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
                 handleSubmit();
               }
             }}
+            onBlur={commands.dismiss}
             onPaste={(event) => {
               const pasted = [...event.clipboardData.files];
               if (pasted.length === 0) return;
               event.preventDefault();
-              addFiles(pasted);
+              addFiles(pasted, { pasted: true });
             }}
             rows={1}
             maxLength={MESSAGE_MAX_LENGTH}

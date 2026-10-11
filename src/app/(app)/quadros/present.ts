@@ -1,6 +1,6 @@
 import { formatDateTime, formatRelative } from "@/lib/format";
 import { resolveMediaUrl } from "@/server/media";
-import type { WhiteboardListItem } from "@/server/whiteboards";
+import type { WhiteboardListItem, WhiteboardViewer } from "@/server/whiteboards";
 import type { WhiteboardCardView, WhiteboardPersonView } from "./types";
 
 export function toPersonView(person: { id: string; name: string; image: string | null }): WhiteboardPersonView {
@@ -11,7 +11,7 @@ export function previewUrlOf(board: { id: string; previewUpdatedAt: Date | null 
   return board.previewUpdatedAt ? `/api/quadros/${board.id}/miniatura?v=${board.previewUpdatedAt.getTime()}` : null;
 }
 
-export function toCardView(item: WhiteboardListItem, now: Date): WhiteboardCardView {
+export function toCardView(item: WhiteboardListItem, now: Date, viewer: WhiteboardViewer): WhiteboardCardView {
   return {
     id: item.id,
     title: item.title,
@@ -22,5 +22,7 @@ export function toCardView(item: WhiteboardListItem, now: Date): WhiteboardCardV
     previewUrl: item.hasPreview ? previewUrlOf(item) : null,
     updated: { label: formatRelative(item.contentUpdatedAt, now), absolute: formatDateTime(item.contentUpdatedAt) },
     updatedBy: item.contentUpdatedByName,
+    // A mesma regra de canManageWhiteboard: o dono e, nos coletivos, os admins.
+    canDelete: item.ownerId === viewer.id || (viewer.isAdmin && item.access !== "private"),
   };
 }

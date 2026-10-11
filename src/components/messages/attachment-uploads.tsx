@@ -20,6 +20,8 @@ export type PendingFile = {
   status: "uploading" | "done" | "error";
   mediaId?: string;
   error?: string;
+  /** Veio do Ctrl+V (conquista "Print ou Não Aconteceu"). */
+  pasted?: boolean;
 };
 
 type Options = {
@@ -38,7 +40,7 @@ export function useAttachmentUploads({ folder, enabled, max, discard }: Options)
     setFiles((current) => current.map((file) => (file.localId === localId ? { ...file, ...patch } : file)));
   }
 
-  function addFiles(list: File[]) {
+  function addFiles(list: File[], options: { pasted?: boolean } = {}) {
     if (list.length === 0) return;
     if (!enabled) {
       toast.error("O envio de arquivos não está configurado.");
@@ -59,6 +61,7 @@ export function useAttachmentUploads({ folder, enabled, max, discard }: Options)
           isImage: getMediaType(file.name)?.kind === "image",
           progress: 0,
           status: "uploading",
+          pasted: options.pasted,
         },
       ]);
       uploadMedia(file, {
@@ -89,6 +92,8 @@ export function useAttachmentUploads({ folder, enabled, max, discard }: Options)
     files,
     ready,
     readyIds: ready.map((file) => file.mediaId!),
+    /** Algum anexo pronto é imagem colada. */
+    pastedImage: ready.some((file) => file.pasted && file.isImage),
     uploading: files.some((file) => file.status === "uploading"),
     full: files.length >= max,
     addFiles,

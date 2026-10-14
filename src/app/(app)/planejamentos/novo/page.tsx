@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 
+import { ResetOnNavigation } from "@/components/reset-on-navigation";
 import { PageHeader } from "@/components/shell/page-header";
 import { PageSkeleton } from "@/components/shell/page-skeleton";
 import { db } from "@/db";
@@ -30,12 +31,14 @@ async function NewPlanningContent() {
         title="Novo planejamento"
         description="Escolha o cliente. Depois, cada mês ganha os posts (colados do Word ou cadastrados um a um) e o próprio status."
       />
-      <PlanningForm
-        initial={{ clientId: null, networks: ["instagram"], postsPerMonth: "", overview: "", memberIds: [] }}
-        clients={clients.map((item) => ({ id: item.id, name: item.name, logoUrl: resolveMediaUrl(item.logoKey) }))}
-        people={people.map((person) => ({ id: person.id, name: person.name, imageUrl: resolveMediaUrl(person.image) }))}
-        uploadsEnabled={isMediaConfigured()}
-      />
+      <ResetOnNavigation>
+        <PlanningForm
+          initial={{ clientId: null, networks: ["instagram"], postsPerMonth: "", overview: "", memberIds: [] }}
+          clients={clients.map((item) => ({ id: item.id, name: item.name, logoUrl: resolveMediaUrl(item.logoKey) }))}
+          people={people.map((person) => ({ id: person.id, name: person.name, imageUrl: resolveMediaUrl(person.image) }))}
+          uploadsEnabled={isMediaConfigured()}
+        />
+      </ResetOnNavigation>
     </div>
   );
 }

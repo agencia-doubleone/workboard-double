@@ -10,7 +10,7 @@ import {
   type Gender,
   type SocialClass,
 } from "@/lib/clients";
-import type { ClientRecord } from "@/server/clients";
+import type { ClientDateItem, ClientRecord } from "@/server/clients";
 import type { ClientFormValues, ClientLinkItem } from "./types";
 
 type Links = Pick<ClientRecord, "website" | "instagram" | "facebook" | "linkedin" | "youtube">;
@@ -31,7 +31,7 @@ export function describeAudience(row: Audience) {
   return parts.length ? parts.join(" · ") : "Todos os públicos";
 }
 
-export function toFormValues(row: ClientRecord, logoUrl: string | null): ClientFormValues {
+export function toFormValues(row: ClientRecord, logoUrl: string | null, dates: ClientDateItem[]): ClientFormValues {
   return {
     clientId: row.id,
     slug: row.slug,
@@ -49,6 +49,8 @@ export function toFormValues(row: ClientRecord, logoUrl: string | null): ClientF
       (SOCIAL_CLASSES as readonly string[]).includes(value),
     ),
     notes: row.notes ?? "",
+    foundedOn: row.foundedOn ?? "",
+    dates: dates.map((item) => ({ key: item.id, label: item.label, date: item.date, yearly: item.yearly })),
   };
 }
 
@@ -65,4 +67,6 @@ export const EMPTY_CLIENT_FORM: ClientFormValues = {
   genders: [],
   socialClasses: [],
   notes: "",
+  foundedOn: "",
+  dates: [],
 };

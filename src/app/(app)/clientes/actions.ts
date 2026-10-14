@@ -8,17 +8,20 @@ import { headers } from "next/headers";
 import { z } from "zod";
 
 import { db } from "@/db";
-import { client, clientCredential } from "@/db/schema";
+import { client, clientCredential, clientDate } from "@/db/schema";
 import type { AuditChanges } from "@/lib/audit";
 import { CLIENT_LINK_KEYS, formatAgeRange, formatGenders, formatSocialClasses } from "@/lib/clients";
+import { formatCalendarDate } from "@/lib/format";
 import { getAdminSession } from "@/lib/session";
 import {
   clientSchema,
   createCredentialSchema,
   credentialTargetSchema,
+  fieldErrorsByPath,
   revealCredentialSchema,
   updateClientSchema,
   updateCredentialSchema,
+  type ClientDateInput,
   type ClientInput,
   type CreateCredentialInput,
   type UpdateClientInput,
@@ -30,6 +33,7 @@ import {
   findClientById,
   findCredentialById,
   generateClientSlug,
+  listClientDates,
   type ClientRecord,
 } from "@/server/clients";
 import { deleteMediaByKey, findMediaById } from "@/server/media";
@@ -64,7 +68,7 @@ async function getAdminContext() {
 }
 
 function invalid(error: z.ZodError): ClientActionResult {
-  return { ok: false, error: "Revise os campos destacados.", fieldErrors: z.flattenError(error).fieldErrors };
+  return { ok: false, error: "Revise os campos destacados.", fieldErrors: fieldErrorsByPath(error) };
 }
 
 function clientEntity(row: { id: string; name: string }) {
@@ -82,7 +86,18 @@ async function resolveLogo(mediaId: string, actorId: string) {
 
 type ClientValues = Pick<
   ClientRecord,
-  "name" | "website" | "instagram" | "facebook" | "linkedin" | "youtube" | "ageMin" | "ageMax" | "genders" | "socialClasses" | "notes"
+  | "name"
+  | "website"
+  | "instagram"
+  | "facebook"
+  | "linkedin"
+  | "youtube"
+  | "ageMin"
+  | "ageMax"
+  | "genders"
+  | "socialClasses"
+  | "notes"
+  | "foundedOn"
 >;
 
 /** Diferenças entre dois estados do cliente, já em texto legível para a auditoria. */
@@ -107,7 +122,25 @@ function diffClient(before: ClientValues & { logoKey: string | null }, after: Cl
   if (before.logoKey !== after.logoKey) {
     changes.logo = { from: before.logoKey ? "Com logo" : "Sem logo", to: after.logoKey ? "Novo logo" : "Sem logo" };
   }
+  if (before.foundedOn !== after.foundedOn) {
+    changes.foundedOn = {
+      from: before.foundedOn && formatCalendarDate(before.foundedOn),
+      to: after.foundedOn && formatCalendarDate(after.foundedOn),
+    };
+  }
   return changes;
+}
+
+/** "Dia do Cliente (15/09/2026, todo ano); Inauguração (20/11/2026)": as datas num texto só, para a auditoria. */
+function describeDates(dates: ClientDateInput[]) {
+  if (dates.length === 0) return null;
+  return dates.map((item) => `${item.label} (${formatCalendarDate(item.date)}${item.yearly ? ", todo ano" : ""})`).join("; ");
+}
+
+/** As datas do formulário, na ordem dele (a lista é regravada inteira quando muda). */
+function insertDates(clientId: string, dates: ClientDateInput[]) {
+  if (dates.length === 0) return [];
+  return [db.insert(clientDate).values(dates.map((item, position) => ({ clientId, ...item, position })))];
 }
 
 function toValues(data: z.output<typeof clientSchema>): ClientValues {
@@ -123,6 +156,7 @@ function toValues(data: z.output<typeof clientSchema>): ClientValues {
     genders: data.genders,
     socialClasses: data.socialClasses,
     notes: sanitizeRichText(data.notes),
+    foundedOn: data.foundedOn,
   };
 }
 
@@ -142,10 +176,12 @@ export async function createClient(input: ClientInput): Promise<ClientActionResu
 
   try {
     const slug = await generateClientSlug(db, values.name);
-    const [created] = await db
-      .insert(client)
-      .values({ ...values, slug, logoKey, createdById: ctx.actor.id })
-      .returning({ id: client.id, name: client.name, slug: client.slug });
+    // O id sai daqui para o cliente e as datas irem juntos (o neon-http não tem transação).
+    const created = { id: randomUUID(), name: values.name, slug };
+    await db.batch([
+      db.insert(client).values({ ...values, id: created.id, slug, logoKey, createdById: ctx.actor.id }),
+      ...insertDates(created.id, parsed.data.dates),
+    ]);
     await recordAudit({
       action: "client.created",
       actor: ctx.actor,
@@ -179,10 +215,20 @@ export async function updateClient(input: UpdateClientInput): Promise<ClientActi
   }
 
   const changes = diffClient(current, { ...values, logoKey });
+  const currentDates = await listClientDates(db, current.id);
+  const datesBefore = describeDates(currentDates);
+  const datesAfter = describeDates(parsed.data.dates);
+  const datesChanged = datesBefore !== datesAfter;
+  if (datesChanged) changes.dates = { from: datesBefore, to: datesAfter };
   if (Object.keys(changes).length === 0) return { ok: true, message: "Nada para salvar.", slug: current.slug };
 
   try {
-    await db.update(client).set({ ...values, logoKey }).where(eq(client.id, current.id));
+    await db.batch([
+      db.update(client).set({ ...values, logoKey }).where(eq(client.id, current.id)),
+      ...(datesChanged
+        ? [db.delete(clientDate).where(eq(clientDate.clientId, current.id)), ...insertDates(current.id, parsed.data.dates)]
+        : []),
+    ]);
   } catch (error) {
     console.error(error);
     return { ok: false, error: "Não foi possível salvar o cliente." };

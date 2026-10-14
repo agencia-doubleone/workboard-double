@@ -1,19 +1,21 @@
 "use client";
 
-import { AlertCircleIcon, ImageUpIcon, Loader2Icon, Trash2Icon } from "lucide-react";
+import { AlertCircleIcon, ImageUpIcon, Loader2Icon, PlusIcon, Trash2Icon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { z } from "zod";
 
 import { CLIENT_LINK_ICONS } from "@/components/brand-icons";
 import { ChoiceChips } from "@/components/choice-chips";
 import { ClientLogo } from "@/components/client-logo";
+import { DatePicker } from "@/components/date-picker";
+import { Hint } from "@/components/hint";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Field,
   FieldDescription,
@@ -28,9 +30,11 @@ import { AVATAR_ACCEPT, prepareContentImage, prepareLogo } from "@/lib/avatar-im
 import {
   AGE_MAX,
   AGE_MIN,
+  CLIENT_DATES_MAX,
   CLIENT_LINK_KEYS,
   CLIENT_LINKS,
   formatAgeRange,
+  FOUNDED_MIN_YEAR,
   GENDER_VALUES,
   GENDERS,
   SOCIAL_CLASSES,
@@ -38,9 +42,9 @@ import {
 } from "@/lib/clients";
 import { MediaUploadError, uploadMedia } from "@/lib/media-upload";
 import { cn } from "@/lib/utils";
-import { clientSchema } from "@/lib/validations/clients";
+import { clientSchema, fieldErrorsByPath } from "@/lib/validations/clients";
 import { createClient, updateClient } from "./actions";
-import type { ClientFormValues } from "./types";
+import type { ClientDateDraft, ClientFormValues } from "./types";
 
 type FieldErrors = Record<string, string[] | undefined>;
 
@@ -54,6 +58,10 @@ const SECTIONS = {
   identity: { title: "Identificação", description: "Nome e logo como aparecem no Workboard. O logo é opcional." },
   links: { title: "Presença online", description: "Site e redes sociais. Sem o https://, o endereço é completado sozinho." },
   audience: { title: "Público-alvo", description: "Para quem o cliente fala. Sem nada marcado, vale todos." },
+  dates: {
+    title: "Datas",
+    description: "O aniversário da empresa e outras datas importantes do cliente. Todas aparecem no calendário da equipe.",
+  },
   notes: { title: "Informações gerais", description: "Briefing, tom de voz, contatos, cuidados, o que a equipe precisa saber." },
 };
 
@@ -93,12 +101,14 @@ export function ClientForm({ initial, uploadsEnabled }: { initial: ClientFormVal
       genders: values.genders,
       socialClasses: values.socialClasses,
       notes: values.notes,
+      foundedOn: values.foundedOn,
+      dates: values.dates.map(({ label, date, yearly }) => ({ label, date, yearly })),
     };
     // Valida antes de enviar o logo: não sobe arquivo para um formulário inválido.
     const parsed = clientSchema.safeParse(payload);
     if (!parsed.success) {
       setError("Revise os campos destacados.");
-      setFieldErrors(z.flattenError(parsed.error).fieldErrors);
+      setFieldErrors(fieldErrorsByPath(parsed.error));
       return;
     }
     setError(null);
@@ -247,6 +257,41 @@ export function ClientForm({ initial, uploadsEnabled }: { initial: ClientFormVal
                   />
                 </Field>
               </div>
+            </FieldGroup>
+          </CardContent>
+        </Card>
+      </Section>
+
+      <Section {...SECTIONS.dates}>
+        <Card>
+          <CardContent>
+            <FieldGroup>
+              <Field data-invalid={!!fieldErrors.foundedOn}>
+                <FieldLabel htmlFor="client-founded">Fundação</FieldLabel>
+                <div className="sm:max-w-56">
+                  <DatePicker
+                    id="client-founded"
+                    value={values.foundedOn}
+                    onChange={(foundedOn) => set("foundedOn", foundedOn)}
+                    invalid={!!fieldErrors.foundedOn}
+                    disabled={busy}
+                    fromYear={FOUNDED_MIN_YEAR}
+                  />
+                </div>
+                {fieldErrors.foundedOn ? (
+                  <FieldError>{fieldErrors.foundedOn[0]}</FieldError>
+                ) : (
+                  <FieldDescription>
+                    Opcional. Todo ano, no dia, o calendário mostra o aniversário da empresa com os anos completados.
+                  </FieldDescription>
+                )}
+              </Field>
+              <DatesField
+                dates={values.dates}
+                onChange={(dates) => set("dates", dates)}
+                errors={fieldErrors}
+                disabled={busy}
+              />
             </FieldGroup>
           </CardContent>
         </Card>
@@ -453,6 +498,117 @@ function LogoField({
           event.target.value = "";
         }}
       />
+    </Field>
+  );
+}
+
+/** As outras datas do cliente: nome, dia e se repete todo ano. */
+function DatesField({
+  dates,
+  onChange,
+  errors,
+  disabled,
+}: {
+  dates: ClientDateDraft[];
+  onChange: (dates: ClientDateDraft[]) => void;
+  errors: FieldErrors;
+  disabled: boolean;
+}) {
+  const added = useRef(0);
+
+  function update(index: number, patch: Partial<ClientDateDraft>) {
+    onChange(dates.map((item, current) => (current === index ? { ...item, ...patch } : item)));
+  }
+
+  function add() {
+    added.current += 1;
+    onChange([...dates, { key: `nova-${added.current}`, label: "", date: "", yearly: true }]);
+  }
+
+  return (
+    <Field data-invalid={!!errors.dates}>
+      <FieldLabel id="client-dates-label">Outras datas</FieldLabel>
+      {dates.length > 0 && (
+        <ul aria-labelledby="client-dates-label" className="flex flex-col gap-4 sm:gap-3">
+          {dates.map((item, index) => {
+            const labelError = errors[`dates.${index}.label`]?.[0];
+            const dateError = errors[`dates.${index}.date`]?.[0];
+            const id = `client-date-${item.key}`;
+            return (
+              <li key={item.key} className="flex flex-col gap-1.5">
+                {/* Celular: nome e lixeira em cima, dia e "Todo ano" embaixo. Tela larga: tudo numa linha. */}
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 sm:grid-cols-[minmax(0,1fr)_12rem_auto_auto]">
+                  <Input
+                    value={item.label}
+                    onChange={(event) => update(index, { label: event.target.value })}
+                    placeholder="Ex.: Dia do Cliente, inauguração da loja"
+                    aria-label={`Nome da data ${index + 1}`}
+                    aria-invalid={!!labelError}
+                    disabled={disabled}
+                    autoComplete="off"
+                    className="order-1 sm:order-none"
+                  />
+                  <div className="order-3 min-w-0 sm:order-none">
+                    <label htmlFor={id} className="sr-only">
+                      Dia da data {index + 1}
+                    </label>
+                    <DatePicker
+                      id={id}
+                      value={item.date}
+                      onChange={(date) => update(index, { date })}
+                      invalid={!!dateError}
+                      disabled={disabled}
+                      fromYear={FOUNDED_MIN_YEAR}
+                    />
+                  </div>
+                  <div className="order-4 flex items-center gap-2 sm:order-none">
+                    <Checkbox
+                      id={`${id}-yearly`}
+                      checked={item.yearly}
+                      onCheckedChange={(yearly) => update(index, { yearly })}
+                      disabled={disabled}
+                    />
+                    <label htmlFor={`${id}-yearly`} className="text-sm whitespace-nowrap">
+                      Todo ano
+                    </label>
+                  </div>
+                  <Hint label="Remover data">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Remover ${item.label.trim() || `a data ${index + 1}`}`}
+                      onClick={() => onChange(dates.filter((_, current) => current !== index))}
+                      disabled={disabled}
+                      className="order-2 sm:order-none"
+                    >
+                      <Trash2Icon />
+                    </Button>
+                  </Hint>
+                </div>
+                {(labelError || dateError) && <FieldError>{labelError ?? dateError}</FieldError>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <Button
+        type="button"
+        variant="outline"
+        onClick={add}
+        disabled={disabled || dates.length >= CLIENT_DATES_MAX}
+        className="w-fit"
+      >
+        <PlusIcon />
+        Adicionar data
+      </Button>
+      {errors.dates ? (
+        <FieldError>{errors.dates[0]}</FieldError>
+      ) : (
+        <FieldDescription>
+          Com “Todo ano”, a data repete a partir do dia escolhido, como um aniversário; sem, aparece só naquele dia.
+        </FieldDescription>
+      )}
     </Field>
   );
 }

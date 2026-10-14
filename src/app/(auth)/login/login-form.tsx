@@ -3,12 +3,13 @@
 import { AlertCircleIcon, Loader2Icon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { z } from "zod";
 
 import { PasswordField } from "@/components/password-field";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { authClient } from "@/lib/auth-client";
@@ -20,10 +21,21 @@ type FieldErrors = Partial<Record<keyof SignInInput, string[]>>;
 /** `canResetPassword`: com envio de e-mail, "Esqueceu a senha?" leva à tela de pedir o link. */
 export function LoginForm({ canResetPassword }: { canResetPassword: boolean }) {
   const router = useRouter();
+  const emailRef = useRef<HTMLInputElement>(null);
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // Quem entrou com "Lembrar de mim" encontra o e-mail preenchido e já digita a senha.
+  useEffect(() => {
+    const input = emailRef.current;
+    const saved = readRememberedEmail();
+    if (!input || input.value || !saved) return;
+    input.value = saved;
+    document.getElementById("password")?.focus();
+  }, []);
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,12 +52,18 @@ export function LoginForm({ canResetPassword }: { canResetPassword: boolean }) {
     setFormError(null);
 
     startTransition(async () => {
-      const { error } = await authClient.signIn.email(parsed.data);
+      // Sem "Lembrar de mim", o Better Auth faz a sessão acabar ao fechar o navegador (e em até 1 dia).
+      const { error } = await authClient.signIn.email({ ...parsed.data, rememberMe });
       if (error) {
         setFormError(getSignInErrorMessage(error));
         return;
       }
 
+      saveRememberedEmail(rememberMe ? parsed.data.email : null);
+      if (rememberMe) offerToSavePassword(parsed.data);
+
+      // A tela de login fica guardada escondida (cacheComponents): a senha não pode ficar no estado dela.
+      setPassword("");
       router.replace(getCallbackUrl());
       router.refresh();
     });
@@ -72,10 +90,11 @@ export function LoginForm({ canResetPassword }: { canResetPassword: boolean }) {
               id="email"
               name="email"
               type="email"
-              autoComplete="email"
+              autoComplete="username"
               placeholder="voce@doubleone.com.br"
               aria-invalid={!!fieldErrors.email}
               disabled={isPending}
+              ref={emailRef}
               autoFocus
             />
             <FieldError>{fieldErrors.email?.[0]}</FieldError>
@@ -92,6 +111,17 @@ export function LoginForm({ canResetPassword }: { canResetPassword: boolean }) {
               disabled={isPending}
             />
             <FieldError>{fieldErrors.password?.[0]}</FieldError>
+          </Field>
+          <Field orientation="horizontal">
+            <Checkbox
+              id="remember-me"
+              checked={rememberMe}
+              onCheckedChange={setRememberMe}
+              disabled={isPending}
+            />
+            <FieldLabel htmlFor="remember-me" className="font-normal">
+              Lembrar de mim
+            </FieldLabel>
           </Field>
           <Button type="submit" disabled={isPending} className="mt-1">
             {isPending && <Loader2Icon className="animate-spin" />}
@@ -127,6 +157,42 @@ function getSignInErrorMessage(error: { code?: string; status: number }) {
     default:
       return "Não foi possível entrar. Tente novamente.";
   }
+}
+
+const REMEMBERED_EMAIL_KEY = "wb:login-email";
+
+function readRememberedEmail() {
+  try {
+    return localStorage.getItem(REMEMBERED_EMAIL_KEY);
+  } catch {
+    return null;
+  }
+}
+
+// Só o e-mail fica no aparelho. A senha nunca vai para o localStorage: quem guarda é
+// o gerenciador de senhas do navegador (offerToSavePassword).
+function saveRememberedEmail(email: string | null) {
+  try {
+    if (email) localStorage.setItem(REMEMBERED_EMAIL_KEY, email);
+    else localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+  } catch {
+    // Armazenamento bloqueado: só não lembra o e-mail.
+  }
+}
+
+type PasswordCredentialConstructor = new (data: { id: string; password: string }) => Credential;
+
+/**
+ * Pede ao gerenciador de senhas do navegador para guardar o acesso. Chrome e Edge
+ * mostram o "Salvar senha?" (ou atualizam a senha salva); nos outros navegadores a
+ * API não existe e eles oferecem sozinhos.
+ */
+function offerToSavePassword({ email, password }: SignInInput) {
+  const { PasswordCredential } = window as typeof window & {
+    PasswordCredential?: PasswordCredentialConstructor;
+  };
+  if (!PasswordCredential || !navigator.credentials) return;
+  navigator.credentials.store(new PasswordCredential({ id: email, password })).catch(() => {});
 }
 
 // Só aceita destinos na mesma origem, para não virar um open redirect.

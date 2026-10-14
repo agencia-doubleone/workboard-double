@@ -2,7 +2,6 @@
 
 import { CakeIcon, GhostIcon, LogOutIcon, SparklesIcon, TreePineIcon, UserRoundIcon, type LucideIcon } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { BirthdayBalloons } from "@/components/birthday-balloons";
@@ -50,7 +49,6 @@ const specialGreetingClass =
 
 /** Canto do header: saudação e a foto, que abre a conta (perfil e sair). */
 export function UserMenu({ user, firstName, greeting, isBirthday, holiday }: UserMenuProps) {
-  const router = useRouter();
   const [isSigningOut, startSignOut] = useTransition();
   // 0 = soltura automática (uma vez por dia); cada clique na saudação solta de novo.
   const [launches, setLaunches] = useState(0);
@@ -59,8 +57,9 @@ export function UserMenu({ user, firstName, greeting, isBirthday, holiday }: Use
   function handleSignOut() {
     startSignOut(async () => {
       await authClient.signOut();
-      router.replace("/login");
-      router.refresh();
+      // Recarrega a página inteira: as telas guardadas pelo Next (formulários, conversas)
+      // não podem sobrar para quem entrar depois neste navegador.
+      window.location.replace("/login");
     });
   }
 

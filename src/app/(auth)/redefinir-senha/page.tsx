@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 
+import { ResetOnNavigation } from "@/components/reset-on-navigation";
 import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { isEmailConfigured } from "@/lib/email";
@@ -30,7 +31,11 @@ async function ResetPasswordContent({
 }) {
   const { token, error } = await searchParams;
   if (typeof token !== "string" || !token || error) return <InvalidLink />;
-  return <ResetPasswordForm token={token} />;
+  return (
+    <ResetOnNavigation>
+      <ResetPasswordForm token={token} />
+    </ResetOnNavigation>
+  );
 }
 
 function InvalidLink() {

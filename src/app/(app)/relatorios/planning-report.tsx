@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { ClientLogo } from "@/components/client-logo";
+import { Hint } from "@/components/hint";
 import { Table, TableBody, TableCell, TableFrame, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { UserAvatar } from "@/components/user-avatar";
 import { formatMonth, monthOf } from "@/lib/calendar";
@@ -22,7 +23,7 @@ import {
 } from "@/server/planning-reports";
 import { ApprovalProgress, PlanningStatusBadge } from "../planejamentos/planning-ui";
 import { ExportCsvButton } from "./export-csv";
-import { BarList, EmptyNote, Section, Stat, StatGrid } from "./report-ui";
+import { BarList, countLabel, EmptyNote, Section, shareLabel, Stat, StatGrid } from "./report-ui";
 
 type Props = { entries: PlanningReportEntry[]; months: string[]; today: string };
 
@@ -45,6 +46,8 @@ export function PlanningReport({ entries, months, today }: Props) {
   const people = planningByPerson(entries, currentMonth);
   const late = lateMonths(entries, currentMonth);
   const statuses = planningStatusCounts(entries);
+  const monthTotal = PLANNING_STATUS_KEYS.reduce((sum, status) => sum + statuses.months[status], statuses.notStarted);
+  const postsTotal = PLANNING_STATUS_KEYS.reduce((sum, status) => sum + statuses.posts[status], 0);
   const single = months.length === 1;
   const filename = (name: string) => `${name}-${months[0]}${single ? "" : `-a-${months[months.length - 1]}`}`;
   const planningHref = (slug: string, month?: string) =>
@@ -89,9 +92,17 @@ export function PlanningReport({ entries, months, today }: Props) {
                 key: status,
                 label: <PlanningStatusBadge status={status} />,
                 value: statuses.months[status],
+                hint: `${countLabel(statuses.months[status], "mês", "meses")} · ${shareLabel(statuses.months[status], monthTotal)}`,
               })),
               ...(statuses.notStarted > 0
-                ? [{ key: "nao-comecado", label: <span className="text-muted-foreground">Não começado</span>, value: statuses.notStarted }]
+                ? [
+                    {
+                      key: "nao-comecado",
+                      label: <span className="text-muted-foreground">Não começado</span>,
+                      value: statuses.notStarted,
+                      hint: `${countLabel(statuses.notStarted, "mês", "meses")} sem nada ainda · ${shareLabel(statuses.notStarted, monthTotal)}`,
+                    },
+                  ]
                 : []),
             ]}
           />
@@ -103,6 +114,7 @@ export function PlanningReport({ entries, months, today }: Props) {
               key: status,
               label: <PlanningStatusBadge status={status} />,
               value: statuses.posts[status],
+              hint: `${countLabel(statuses.posts[status], "post", "posts")} · ${shareLabel(statuses.posts[status], postsTotal)}`,
             }))}
           />
         </Section>
@@ -410,21 +422,23 @@ function ClientLink({ client, href }: { client: PlanningReportEntry["client"]; h
 function People({ people }: { people: PlanningPerson[] }) {
   if (people.length === 0) return <span className="text-muted-foreground">—</span>;
   return (
-    <span className="flex -space-x-1.5" title={people.map((person) => person.name).join(", ")}>
-      {people.slice(0, 4).map((person) => (
-        <UserAvatar
-          key={person.id}
-          name={person.name}
-          imageUrl={resolveMediaUrl(person.image)}
-          alt={person.name}
-          className="size-6 text-[9px] ring-2 ring-card"
-        />
-      ))}
-      {people.length > 4 && (
-        <span className="flex size-6 items-center justify-center rounded-md bg-muted text-[10px] font-medium ring-2 ring-card">
-          +{people.length - 4}
-        </span>
-      )}
-    </span>
+    <Hint label={people.map((person) => person.name).join(", ")}>
+      <span className="flex w-fit -space-x-1.5">
+        {people.slice(0, 4).map((person) => (
+          <UserAvatar
+            key={person.id}
+            name={person.name}
+            imageUrl={resolveMediaUrl(person.image)}
+            alt={person.name}
+            className="size-6 text-[9px] ring-2 ring-card"
+          />
+        ))}
+        {people.length > 4 && (
+          <span className="flex size-6 items-center justify-center rounded-md bg-muted text-[10px] font-medium ring-2 ring-card">
+            +{people.length - 4}
+          </span>
+        )}
+      </span>
+    </Hint>
   );
 }

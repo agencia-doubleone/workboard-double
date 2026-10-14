@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 
+import { Hint } from "@/components/hint";
 import { PageHeader } from "@/components/shell/page-header";
 import { PageSkeleton } from "@/components/shell/page-skeleton";
 import { buttonVariants } from "@/components/ui/button";
@@ -15,13 +16,15 @@ import {
   isMonthKey,
   monthGrid,
   monthOf,
+  occasionOccurrences,
   shiftMonth,
   type MonthKey,
 } from "@/lib/calendar";
+import { foundingOccasion } from "@/lib/clients";
 import { isOverdue, todayInSaoPaulo } from "@/lib/jobs";
 import { requireSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
-import { listBirthdays, listJobsDue } from "@/server/calendar";
+import { listBirthdays, listClientOccasions, listJobsDue } from "@/server/calendar";
 import { resolveMediaUrl } from "@/server/media";
 import { toPersonView } from "../trabalhos/present";
 import { CalendarView } from "./calendar-view";
@@ -71,9 +74,10 @@ async function CalendarContent({ searchParams }: { searchParams: PageProps<"/cal
   };
 
   const { days, from, to } = monthGrid(params.month);
-  const [jobs, birthdays] = await Promise.all([
+  const [jobs, birthdays, occasions] = await Promise.all([
     listJobsDue(db, { from, to, assigneeId: params.mine ? user.id : undefined, openOnly: !params.all }),
     listBirthdays(db),
+    listClientOccasions(db),
   ]);
 
   const itemsByDay = new Map<string, CalendarItem[]>();
@@ -88,6 +92,32 @@ async function CalendarContent({ searchParams }: { searchParams: PageProps<"/cal
         isViewer: person.id === user.id,
       });
     }
+  }
+  // Datas dos clientes: todos os ativos, como os aniversários (não dependem dos filtros dos trabalhos).
+  const clientDays = [
+    ...occasions.founded.flatMap((row) =>
+      occasionOccurrences(row.foundedOn, true, from, to).map((day) => ({
+        day,
+        client: row,
+        item: { id: `fundacao:${row.id}:${day}`, ...foundingOccasion(row.foundedOn, day), founding: true },
+      })),
+    ),
+    ...occasions.dates.flatMap((row) =>
+      occasionOccurrences(row.date, row.yearly, from, to).map((day) => ({
+        day,
+        client: row.client,
+        item: { id: `${row.id}:${day}`, label: row.label, age: null, founding: false },
+      })),
+    ),
+  ].sort((a, b) => a.client.name.localeCompare(b.client.name, "pt-BR") || Number(b.item.founding) - Number(a.item.founding));
+  for (const { day, client, item } of clientDays) {
+    add(day, {
+      kind: "client",
+      ...item,
+      clientName: client.name,
+      clientSlug: client.slug,
+      clientLogoUrl: resolveMediaUrl(client.logoKey),
+    });
   }
   for (const job of jobs) {
     add(job.dueDate, {
@@ -124,28 +154,32 @@ async function CalendarContent({ searchParams }: { searchParams: PageProps<"/cal
         title="Calendário"
         description={
           params.mine
-            ? "As entregas dos seus trabalhos e os aniversários da equipe, dia a dia."
-            : "As entregas de todos os trabalhos e os aniversários da equipe, dia a dia."
+            ? "As entregas dos seus trabalhos, os aniversários da equipe e as datas dos clientes, dia a dia."
+            : "As entregas de todos os trabalhos, os aniversários da equipe e as datas dos clientes, dia a dia."
         }
       />
 
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1">
-            <Link
-              href={calendarHref({ ...params, month: shiftMonth(params.month, -1) }, today)}
-              aria-label="Mês anterior"
-              className={buttonVariants({ variant: "outline", size: "icon" })}
-            >
-              <ChevronLeftIcon />
-            </Link>
-            <Link
-              href={calendarHref({ ...params, month: shiftMonth(params.month, 1) }, today)}
-              aria-label="Próximo mês"
-              className={buttonVariants({ variant: "outline", size: "icon" })}
-            >
-              <ChevronRightIcon />
-            </Link>
+            <Hint label="Mês anterior">
+              <Link
+                href={calendarHref({ ...params, month: shiftMonth(params.month, -1) }, today)}
+                aria-label="Mês anterior"
+                className={buttonVariants({ variant: "outline", size: "icon" })}
+              >
+                <ChevronLeftIcon />
+              </Link>
+            </Hint>
+            <Hint label="Próximo mês">
+              <Link
+                href={calendarHref({ ...params, month: shiftMonth(params.month, 1) }, today)}
+                aria-label="Próximo mês"
+                className={buttonVariants({ variant: "outline", size: "icon" })}
+              >
+                <ChevronRightIcon />
+              </Link>
+            </Hint>
             {!isCurrentMonth && (
               <Link
                 href={calendarHref({ ...params, month: monthOf(today) }, today)}
@@ -187,8 +221,8 @@ async function CalendarContent({ searchParams }: { searchParams: PageProps<"/cal
           days={calendarDays}
           emptyText={
             params.all
-              ? "Nenhuma entrega nem aniversário neste mês."
-              : "Nenhuma entrega em aberto nem aniversário neste mês."
+              ? "Nenhuma entrega, aniversário ou data de cliente neste mês."
+              : "Nenhuma entrega em aberto, aniversário ou data de cliente neste mês."
           }
         />
       </div>

@@ -27,6 +27,22 @@ export const CLIENT_LINK_KEYS = Object.keys(CLIENT_LINKS) as ClientLink[];
 
 export const CLIENT_NAME_MAX_LENGTH = 120;
 export const CLIENT_NOTES_MAX_LENGTH = 100_000;
+export const CLIENT_DATE_LABEL_MAX_LENGTH = 80;
+/** Datas importantes por cliente, além da fundação. */
+export const CLIENT_DATES_MAX = 20;
+/** Fundação a partir deste ano (o seletor de data e a validação usam o mesmo). */
+export const FOUNDED_MIN_YEAR = 1850;
+
+/**
+ * Como a fundação aparece num dia em que ela cai: "Aniversário da empresa" com
+ * os anos completados, ou "Fundação" no próprio ano.
+ */
+export function foundingOccasion(foundedOn: string, day: string) {
+  const years = Number(day.slice(0, 4)) - Number(foundedOn.slice(0, 4));
+  return years > 0
+    ? { label: "Aniversário da empresa", age: `${years} ${years === 1 ? "ano" : "anos"}` }
+    : { label: "Fundação", age: null };
+}
 
 export function formatAgeRange(min: number, max: number) {
   if (min <= AGE_MIN && max >= AGE_MAX) return "Todas as idades";

@@ -1,7 +1,7 @@
 import { and, asc, count, eq, isNotNull, isNull, like, or, sql } from "drizzle-orm";
 
 import type { Database } from "@/db";
-import { client, clientCredential } from "@/db/schema";
+import { client, clientCredential, clientDate } from "@/db/schema";
 import { slugify } from "@/lib/slug";
 
 export type ClientRecord = typeof client.$inferSelect;
@@ -116,3 +116,14 @@ export async function findActiveClientById(database: Database, id: string) {
     .limit(1);
   return found ?? null;
 }
+
+/** Datas importantes do cliente (além da fundação), na ordem do formulário. */
+export async function listClientDates(database: Database, clientId: string) {
+  return database
+    .select({ id: clientDate.id, label: clientDate.label, date: clientDate.date, yearly: clientDate.yearly })
+    .from(clientDate)
+    .where(eq(clientDate.clientId, clientId))
+    .orderBy(asc(clientDate.position), asc(clientDate.createdAt));
+}
+
+export type ClientDateItem = Awaited<ReturnType<typeof listClientDates>>[number];

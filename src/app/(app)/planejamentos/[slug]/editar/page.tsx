@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
+import { ResetOnNavigation } from "@/components/reset-on-navigation";
 import { PageHeader } from "@/components/shell/page-header";
 import { PageSkeleton } from "@/components/shell/page-skeleton";
 import { db } from "@/db";
@@ -41,20 +42,22 @@ async function EditPlanningContent({ params }: { params: PageProps<"/planejament
           ) : null
         }
       />
-      <PlanningForm
-        initial={{
-          planningId: found.planning.id,
-          clientId: found.client.id,
-          networks: found.planning.networks,
-          postsPerMonth: found.planning.postsPerMonth ? String(found.planning.postsPerMonth) : "",
-          overview: found.planning.overview ?? "",
-          memberIds: found.members.map((person) => person.id),
-        }}
-        clients={[]}
-        client={{ name: found.client.name, slug: found.client.slug, logoUrl: resolveMediaUrl(found.client.logoKey) }}
-        people={people.map((person) => ({ id: person.id, name: person.name, imageUrl: resolveMediaUrl(person.image) }))}
-        uploadsEnabled={isMediaConfigured()}
-      />
+      <ResetOnNavigation>
+        <PlanningForm
+          initial={{
+            planningId: found.planning.id,
+            clientId: found.client.id,
+            networks: found.planning.networks,
+            postsPerMonth: found.planning.postsPerMonth ? String(found.planning.postsPerMonth) : "",
+            overview: found.planning.overview ?? "",
+            memberIds: found.members.map((person) => person.id),
+          }}
+          clients={[]}
+          client={{ name: found.client.name, slug: found.client.slug, logoUrl: resolveMediaUrl(found.client.logoKey) }}
+          people={people.map((person) => ({ id: person.id, name: person.name, imageUrl: resolveMediaUrl(person.image) }))}
+          uploadsEnabled={isMediaConfigured()}
+        />
+      </ResetOnNavigation>
     </div>
   );
 }

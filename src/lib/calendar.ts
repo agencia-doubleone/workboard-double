@@ -9,6 +9,7 @@ const MONTH_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/;
 const monthLabel = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
 const dayLabel = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
 const shortDayLabel = new Intl.DateTimeFormat("pt-BR", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+const dayMonthLabel = new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "long", timeZone: "UTC" });
 
 /** Semana começando no domingo, como no seletor de datas (date-fns ptBR). */
 export const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"] as const;
@@ -49,6 +50,11 @@ export function formatDay(day: string) {
 /** "sex., 9 de out." */
 export function formatShortDay(day: string) {
   return shortDayLabel.format(toUtc(day));
+}
+
+/** "10 de março" (data que repete todo ano). */
+export function formatDayMonth(day: string) {
+  return dayMonthLabel.format(toUtc(day));
 }
 
 /** "sex 09/10": cabe numa coluna estreita. */
@@ -94,4 +100,28 @@ export function birthdayOccurrences(birthday: string, from: string, to: string) 
     if (day >= from && day <= to) days.push(day);
   }
   return days;
+}
+
+/**
+ * Em que dias uma data (de cliente) cai no intervalo: a que repete todo ano
+ * cai como um aniversário, do próprio dia em diante; a outra, só no dia.
+ */
+export function occasionOccurrences(day: string, yearly: boolean, from: string, to: string) {
+  if (!yearly) return day >= from && day <= to ? [day] : [];
+  return birthdayOccurrences(day, from, to).filter((occurrence) => occurrence >= day);
+}
+
+/** A próxima vez que a data cai, hoje inclusive (null: não repete e já passou). */
+export function nextOccurrence(day: string, yearly: boolean, today: string) {
+  if (day >= today) return day;
+  if (!yearly) return null;
+  return occasionOccurrences(day, true, today, `${Number(today.slice(0, 4)) + 1}-12-31`)[0] ?? null;
+}
+
+/** "Hoje", "Amanhã", "Em 12 dias" (até um dia de hoje em diante). */
+export function formatUntil(day: string, today: string) {
+  const days = Math.round((toUtc(day).getTime() - toUtc(today).getTime()) / 86_400_000);
+  if (days <= 0) return "Hoje";
+  if (days === 1) return "Amanhã";
+  return `Em ${days} dias`;
 }

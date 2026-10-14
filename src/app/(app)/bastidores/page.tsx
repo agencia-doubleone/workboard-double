@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 
+import { ResetOnNavigation } from "@/components/reset-on-navigation";
 import { PageSkeleton } from "@/components/shell/page-skeleton";
 import { UserAvatar } from "@/components/user-avatar";
 import { db } from "@/db";
@@ -71,7 +72,9 @@ async function BackstageContent() {
             Quem achou a porta deixa o nome aqui. {mine ? "Você já assinou; dá para trocar o recado." : "Falta só você."}
           </p>
         </div>
-        <GuestbookForm signed={Boolean(mine)} initialMessage={mine?.message ?? ""} />
+        <ResetOnNavigation>
+          <GuestbookForm signed={Boolean(mine)} initialMessage={mine?.message ?? ""} />
+        </ResetOnNavigation>
         {entries.length > 0 && (
           <ul className="flex flex-col divide-y rounded-xl border bg-card shadow-raised">
             {entries.map((entry) => (

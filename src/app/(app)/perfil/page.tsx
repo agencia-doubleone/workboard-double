@@ -5,6 +5,7 @@ import { Suspense } from "react";
 
 import { AchievementBadge } from "@/components/achievements/achievement-badge";
 import { Hint } from "@/components/hint";
+import { ResetOnNavigation } from "@/components/reset-on-navigation";
 import { PageHeader } from "@/components/shell/page-header";
 import { buttonVariants } from "@/components/ui/button";
 import { db } from "@/db";
@@ -37,15 +38,17 @@ async function ProfileContent() {
   const achievements = await listRecentAchievements(db, user.id, RECENT_ACHIEVEMENTS);
   return (
     <div className="flex flex-col gap-8">
-      <ProfileForm
-        user={{
-          name: user.name,
-          email: user.email,
-          imageUrl: resolveMediaUrl(user.image),
-          birthday: user.birthday ?? null,
-        }}
-        uploadsEnabled={isMediaConfigured()}
-      />
+      <ResetOnNavigation>
+        <ProfileForm
+          user={{
+            name: user.name,
+            email: user.email,
+            imageUrl: resolveMediaUrl(user.image),
+            birthday: user.birthday ?? null,
+          }}
+          uploadsEnabled={isMediaConfigured()}
+        />
+      </ResetOnNavigation>
       <AchievementsSection {...achievements} />
     </div>
   );

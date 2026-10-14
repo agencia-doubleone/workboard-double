@@ -2,6 +2,7 @@ import { MailXIcon } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { ResetOnNavigation } from "@/components/reset-on-navigation";
 import { buttonVariants } from "@/components/ui/button";
 import { isEmailConfigured } from "@/lib/email";
 import { AuthHeading } from "../auth-heading";
@@ -29,5 +30,9 @@ export default function EsqueciASenhaPage() {
       </div>
     );
   }
-  return <ForgotPasswordForm />;
+  return (
+    <ResetOnNavigation>
+      <ForgotPasswordForm />
+    </ResetOnNavigation>
+  );
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { ClientLogo } from "@/components/client-logo";
+import { Hint } from "@/components/hint";
 import { JobStatusBadge } from "@/components/job-status-badge";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
@@ -87,9 +88,11 @@ export type BarItem = {
   value: number;
   /** Texto do valor (padrão: o número). */
   display?: string;
-  /** Cor da barra (padrão: a de destaque). */
-  color?: string;
+  /** Barra neutra (preta no claro, branca no escuro) em vez da cor de destaque: ao lado de selos coloridos. */
+  neutral?: boolean;
   href?: string;
+  /** Tooltip da linha (os números por extenso). */
+  hint?: React.ReactNode;
 };
 
 /** Barras horizontais proporcionais ao maior valor. */
@@ -107,26 +110,23 @@ export function BarList({ items, empty }: { items: BarItem[]; empty: string }) {
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-muted">
               <div
-                className={cn("h-full rounded-full", !item.color && "bg-primary")}
-                style={{ width: `${Math.max(2, (item.value / max) * 100)}%`, backgroundColor: item.color }}
+                className={cn("h-full rounded-full", item.neutral ? "bg-foreground" : "bg-primary")}
+                style={{ width: `${Math.max(2, (item.value / max) * 100)}%` }}
               />
             </div>
           </>
         );
-        return (
-          <li key={item.key}>
-            {item.href ? (
-              <Link
-                href={item.href}
-                className="flex flex-col gap-1.5 rounded-md outline-none hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring/50"
-              >
-                {row}
-              </Link>
-            ) : (
-              <div className="flex flex-col gap-1.5">{row}</div>
-            )}
-          </li>
+        const content = item.href ? (
+          <Link
+            href={item.href}
+            className="flex flex-col gap-1.5 rounded-md outline-none hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring/50"
+          >
+            {row}
+          </Link>
+        ) : (
+          <div className="flex flex-col gap-1.5">{row}</div>
         );
+        return <li key={item.key}>{item.hint ? <Hint label={item.hint}>{content}</Hint> : content}</li>;
       })}
     </ul>
   );
@@ -148,17 +148,27 @@ export function TimelineChart({ buckets }: { buckets: TimelineBucket[] }) {
       </div>
       <div className="flex h-44 items-end gap-1 border-b sm:gap-2" aria-hidden="true">
         {buckets.map((bucket) => (
-          <div
+          <Hint
             key={bucket.from}
-            className="flex h-full min-w-0 flex-1 items-end justify-center gap-0.5"
-            title={`${formatCalendarDate(bucket.from)} a ${formatCalendarDate(bucket.to)}: ${bucket.created} criados, ${bucket.concluded} concluídos`}
+            label={
+              <span className="flex flex-col">
+                <span>
+                  {formatCalendarDate(bucket.from)} a {formatCalendarDate(bucket.to)}
+                </span>
+                <span className="font-normal opacity-80">
+                  {countLabel(bucket.created, "criado", "criados")}, {countLabel(bucket.concluded, "concluído", "concluídos")}
+                </span>
+              </span>
+            }
           >
-            <div
-              className="w-full max-w-5 rounded-t-sm bg-foreground/25"
-              style={{ height: `${(bucket.created / max) * 100}%` }}
-            />
-            <div className="w-full max-w-5 rounded-t-sm bg-primary" style={{ height: `${(bucket.concluded / max) * 100}%` }} />
-          </div>
+            <div className="flex h-full min-w-0 flex-1 items-end justify-center gap-0.5">
+              <div
+                className="w-full max-w-5 rounded-t-sm bg-foreground/25"
+                style={{ height: `${(bucket.created / max) * 100}%` }}
+              />
+              <div className="w-full max-w-5 rounded-t-sm bg-primary" style={{ height: `${(bucket.concluded / max) * 100}%` }} />
+            </div>
+          </Hint>
         ))}
       </div>
       <div className="flex gap-1 sm:gap-2" aria-hidden="true">
@@ -261,22 +271,24 @@ export function ReportJobsTable({
                 {item.assignees.length === 0 ? (
                   <span className="text-muted-foreground">—</span>
                 ) : (
-                  <span className="flex -space-x-1.5">
-                    {item.assignees.slice(0, 4).map((person) => (
-                      <UserAvatar
-                        key={person.id}
-                        name={person.name}
-                        imageUrl={resolveMediaUrl(person.image)}
-                        alt={person.name}
-                        className="size-6 text-[9px] ring-2 ring-card"
-                      />
-                    ))}
-                    {item.assignees.length > 4 && (
-                      <span className="flex size-6 items-center justify-center rounded-md bg-muted text-[10px] font-medium ring-2 ring-card">
-                        +{item.assignees.length - 4}
-                      </span>
-                    )}
-                  </span>
+                  <Hint label={item.assignees.map((person) => person.name).join(", ")}>
+                    <span className="flex w-fit -space-x-1.5">
+                      {item.assignees.slice(0, 4).map((person) => (
+                        <UserAvatar
+                          key={person.id}
+                          name={person.name}
+                          imageUrl={resolveMediaUrl(person.image)}
+                          alt={person.name}
+                          className="size-6 text-[9px] ring-2 ring-card"
+                        />
+                      ))}
+                      {item.assignees.length > 4 && (
+                        <span className="flex size-6 items-center justify-center rounded-md bg-muted text-[10px] font-medium ring-2 ring-card">
+                          +{item.assignees.length - 4}
+                        </span>
+                      )}
+                    </span>
+                  </Hint>
                 )}
               </TableCell>
             </TableRow>
@@ -285,6 +297,16 @@ export function ReportJobsTable({
       </Table>
     </TableFrame>
   );
+}
+
+/** "1 trabalho", "3 trabalhos". */
+export function countLabel(count: number, singular: string, plural: string) {
+  return `${count.toLocaleString("pt-BR")} ${count === 1 ? singular : plural}`;
+}
+
+/** Parte do total, para os tooltips ("40% do total"). */
+export function shareLabel(value: number, total: number) {
+  return total > 0 ? `${Math.round((value / total) * 100)}% do total` : "";
 }
 
 export const dueCell = (item: ReportJob) => (item.dueDate ? formatCalendarDate(item.dueDate) : "—");

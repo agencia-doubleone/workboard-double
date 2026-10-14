@@ -122,6 +122,8 @@ export const AUDIT_FIELD_LABELS: Record<string, string> = {
   genders: "Gênero",
   socialClasses: "Classe social",
   notes: "Informações gerais",
+  foundedOn: "Fundação",
+  dates: "Datas importantes",
   service: "Serviço",
   url: "Endereço",
   username: "Login",

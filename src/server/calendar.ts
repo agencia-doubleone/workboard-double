@@ -1,7 +1,7 @@
 import { and, asc, eq, gte, isNotNull, isNull, lte, ne, or, sql, type SQL } from "drizzle-orm";
 
 import type { Database } from "@/db";
-import { client, job, jobAssignee, jobStatus, user } from "@/db/schema";
+import { client, clientDate, job, jobAssignee, jobStatus, user } from "@/db/schema";
 import { listAssignees } from "@/server/jobs";
 
 // Consultas do calendário (sem "server-only": também rodam nos scripts de
@@ -65,4 +65,30 @@ export async function listBirthdays(database: Database) {
     .from(user)
     .where(and(isNotNull(user.birthday), or(isNull(user.banned), ne(user.banned, true))));
   return rows.map((row) => ({ ...row, birthday: row.birthday! }));
+}
+
+/**
+ * Fundação e datas importantes dos clientes ativos (arquivado sai do
+ * calendário). A página decide em que dias cada uma cai (occasionOccurrences).
+ */
+export async function listClientOccasions(database: Database) {
+  const clientFields = { id: client.id, name: client.name, slug: client.slug, logoKey: client.logoKey };
+  const [founded, dates] = await Promise.all([
+    database
+      .select({ ...clientFields, foundedOn: client.foundedOn })
+      .from(client)
+      .where(and(isNull(client.archivedAt), isNotNull(client.foundedOn))),
+    database
+      .select({
+        id: clientDate.id,
+        label: clientDate.label,
+        date: clientDate.date,
+        yearly: clientDate.yearly,
+        client: clientFields,
+      })
+      .from(clientDate)
+      .innerJoin(client, eq(client.id, clientDate.clientId))
+      .where(isNull(client.archivedAt)),
+  ]);
+  return { founded: founded.map((row) => ({ ...row, foundedOn: row.foundedOn! })), dates };
 }

@@ -3,8 +3,11 @@ import { z } from "zod";
 import {
   AGE_MAX,
   AGE_MIN,
+  CLIENT_DATE_LABEL_MAX_LENGTH,
+  CLIENT_DATES_MAX,
   CLIENT_NAME_MAX_LENGTH,
   CLIENT_NOTES_MAX_LENGTH,
+  FOUNDED_MIN_YEAR,
   GENDER_VALUES,
   SOCIAL_CLASSES,
 } from "@/lib/clients";
@@ -29,6 +32,23 @@ const optionalText = (max: number, message: string) =>
     z.string().trim().max(max, message).nullable(),
   );
 
+/** Data pura "AAAA-MM-DD" num intervalo que faz sentido para empresas. */
+const clientDay = z.iso
+  .date("Informe uma data válida.")
+  .refine((value) => value >= `${FOUNDED_MIN_YEAR}-01-01` && value <= "2199-12-31", "Informe uma data válida.");
+
+export const clientDateSchema = z.object({
+  label: z
+    .string()
+    .trim()
+    .min(1, "Dê um nome à data.")
+    .max(CLIENT_DATE_LABEL_MAX_LENGTH, `Use até ${CLIENT_DATE_LABEL_MAX_LENGTH} caracteres.`),
+  date: clientDay,
+  /** Repete todo ano a partir da data; sem, aparece só no dia. */
+  yearly: z.boolean(),
+});
+export type ClientDateInput = z.infer<typeof clientDateSchema>;
+
 const clientFields = z.object({
   name: z
     .string()
@@ -46,6 +66,9 @@ const clientFields = z.object({
   socialClasses: z.array(z.enum(SOCIAL_CLASSES)).transform((values) => [...new Set(values)]),
   /** HTML do editor; o servidor limpa antes de salvar (src/server/rich-text.ts). */
   notes: z.string().max(CLIENT_NOTES_MAX_LENGTH, "O texto ficou longo demais."),
+  /** Fundação (o aniversário da empresa). Em branco = sem data. */
+  foundedOn: z.preprocess((value) => (value === "" || value === undefined ? null : value), clientDay.nullable()),
+  dates: z.array(clientDateSchema).max(CLIENT_DATES_MAX, `Cadastre até ${CLIENT_DATES_MAX} datas.`),
   /**
    * Logo já enviado ao CDN (pasta "clientes"). undefined = não mexe,
    * null = remove, id = troca.
@@ -65,6 +88,19 @@ export const updateClientSchema = clientFields
 export type UpdateClientInput = z.input<typeof updateClientSchema>;
 
 export const clientTargetSchema = z.object({ clientId: z.uuid("Cliente inválido.") });
+
+/**
+ * Erros por campo, como o z.flattenError, mas também os das listas, pelo
+ * caminho ("dates.0.label"): cada linha das datas mostra o próprio erro.
+ */
+export function fieldErrorsByPath(error: z.ZodError) {
+  const errors: Record<string, string[]> = {};
+  for (const issue of error.issues) {
+    const key = issue.path.join(".");
+    if (key) (errors[key] ??= []).push(issue.message);
+  }
+  return errors;
+}
 
 // Cofre de senhas
 

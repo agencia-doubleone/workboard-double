@@ -25,7 +25,21 @@ export type CalendarBirthday = {
   isViewer: boolean;
 };
 
-export type CalendarItem = CalendarJob | CalendarBirthday;
+/** Fundação ou data importante de um cliente ativo. */
+export type CalendarClientDate = {
+  kind: "client";
+  id: string;
+  clientName: string;
+  clientSlug: string;
+  clientLogoUrl: string | null;
+  /** "Aniversário da empresa", "Fundação" ou o nome da data. */
+  label: string;
+  /** Anos completados (só o aniversário da empresa). */
+  age: string | null;
+  founding: boolean;
+};
+
+export type CalendarItem = CalendarJob | CalendarBirthday | CalendarClientDate;
 
 export type CalendarDay = {
   /** "AAAA-MM-DD" */
@@ -38,6 +52,6 @@ export type CalendarDay = {
   shortTitle: string;
   inMonth: boolean;
   isToday: boolean;
-  /** Aniversários primeiro, depois os trabalhos por PIT. */
+  /** Aniversários da equipe, datas dos clientes e os trabalhos por PIT. */
   items: CalendarItem[];
 };

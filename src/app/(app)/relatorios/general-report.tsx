@@ -12,7 +12,7 @@ import {
 } from "@/server/reports";
 import { ExportCsvButton } from "./export-csv";
 import { reportHref, type ReportParams } from "./params";
-import { BarList, Section, Stat, StatGrid, TimelineChart } from "./report-ui";
+import { BarList, countLabel, Section, shareLabel, Stat, StatGrid, TimelineChart } from "./report-ui";
 
 const TOP = 6;
 
@@ -22,6 +22,7 @@ export function GeneralReport({ jobs, params, today }: { jobs: ReportJob[]; para
   const buckets = timeline(jobs, params.period);
   const monthly = dayDiff(params.period.from, params.period.to) > 92;
   const statuses = openByStatus(jobs);
+  const openTotal = statuses.reduce((sum, row) => sum + row.count, 0);
   const clients = byClient(jobs, bounds, today).slice(0, TOP);
   // Quem aparece como funcionário em algum trabalho (o ranking completo fica na aba da equipe).
   const people = [...new Map(jobs.flatMap((item) => item.assignees).map((person) => [person.id, person])).values()];
@@ -77,7 +78,8 @@ export function GeneralReport({ jobs, params, today }: { jobs: ReportJob[]; para
                 <JobStatusBadge name={status.name} textColor={status.textColor} backgroundColor={status.backgroundColor} />
               ),
               value: count,
-              color: status.textColor,
+              neutral: true,
+              hint: `${countLabel(count, "trabalho", "trabalhos")} · ${shareLabel(count, openTotal)}`,
             }))}
           />
         </Section>
@@ -90,6 +92,7 @@ export function GeneralReport({ jobs, params, today }: { jobs: ReportJob[]; para
                 key: row.client.id,
                 label: row.client.name,
                 value: row.created + row.concluded,
+                hint: `${countLabel(row.created, "criado", "criados")} e ${countLabel(row.concluded, "concluído", "concluídos")}`,
                 href: reportHref({ ...params, tab: "clientes", clientId: row.client.id }),
               }))}
           />
@@ -101,6 +104,7 @@ export function GeneralReport({ jobs, params, today }: { jobs: ReportJob[]; para
               key: row.person.id,
               label: row.person.name,
               value: row.concluded,
+              hint: countLabel(row.concluded, "trabalho concluído", "trabalhos concluídos"),
               href: reportHref({ ...params, tab: "equipe", clientId: undefined }),
             }))}
           />

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 
+import { ResetOnNavigation } from "@/components/reset-on-navigation";
 import { PageHeader } from "@/components/shell/page-header";
 import { PageSkeleton } from "@/components/shell/page-skeleton";
 import { db } from "@/db";
@@ -34,22 +35,24 @@ async function NewJobContent() {
   return (
     <div className="flex flex-col gap-8">
       <PageHeader title="Novo trabalho" description="O PIT é gerado ao salvar. Depois, a conversa da equipe fica na página do trabalho." />
-      <JobForm
-        initial={{
-          name: "",
-          clientId: null,
-          assigneeIds: [],
-          dueDate: "",
-          statusId: defaultStatus?.id ?? "",
-          active: true,
-          briefing: "",
-        }}
-        // Trabalho novo não começa cancelado.
-        statuses={selectableStatuses(statuses.map(toStatusOption), null, true)}
-        clients={clients.map((item) => ({ id: item.id, name: item.name, logoUrl: resolveMediaUrl(item.logoKey) }))}
-        people={people.map(toPersonView)}
-        uploadsEnabled={isMediaConfigured()}
-      />
+      <ResetOnNavigation>
+        <JobForm
+          initial={{
+            name: "",
+            clientId: null,
+            assigneeIds: [],
+            dueDate: "",
+            statusId: defaultStatus?.id ?? "",
+            active: true,
+            briefing: "",
+          }}
+          // Trabalho novo não começa cancelado.
+          statuses={selectableStatuses(statuses.map(toStatusOption), null, true)}
+          clients={clients.map((item) => ({ id: item.id, name: item.name, logoUrl: resolveMediaUrl(item.logoKey) }))}
+          people={people.map(toPersonView)}
+          uploadsEnabled={isMediaConfigured()}
+        />
+      </ResetOnNavigation>
     </div>
   );
 }

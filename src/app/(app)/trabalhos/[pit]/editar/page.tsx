@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
+import { ResetOnNavigation } from "@/components/reset-on-navigation";
 import { PageHeader } from "@/components/shell/page-header";
 import { PageSkeleton } from "@/components/shell/page-skeleton";
 import { db } from "@/db";
@@ -44,14 +45,16 @@ async function EditJobContent({ params }: { params: PageProps<"/trabalhos/[pit]/
         title={`Editar #${found.job.pit} ${found.job.name}`}
         description="As mudanças ficam registradas no histórico do trabalho."
       />
-      <JobForm
-        initial={toFormValues(found)}
-        // Quem não é admin não cancela nem tira de cancelado.
-        statuses={selectableStatuses(statuses.map(toStatusOption), found.job.statusId, user.role === "admin")}
-        clients={clients.map((item) => ({ id: item.id, name: item.name, logoUrl: resolveMediaUrl(item.logoKey) }))}
-        people={people.map(toPersonView)}
-        uploadsEnabled={isMediaConfigured()}
-      />
+      <ResetOnNavigation>
+        <JobForm
+          initial={toFormValues(found)}
+          // Quem não é admin não cancela nem tira de cancelado.
+          statuses={selectableStatuses(statuses.map(toStatusOption), found.job.statusId, user.role === "admin")}
+          clients={clients.map((item) => ({ id: item.id, name: item.name, logoUrl: resolveMediaUrl(item.logoKey) }))}
+          people={people.map(toPersonView)}
+          uploadsEnabled={isMediaConfigured()}
+        />
+      </ResetOnNavigation>
     </div>
   );
 }

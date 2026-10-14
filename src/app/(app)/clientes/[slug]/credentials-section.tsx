@@ -13,9 +13,10 @@ import {
   MoreHorizontalIcon,
   PencilIcon,
   PlusIcon,
+  SearchIcon,
   Trash2Icon,
 } from "lucide-react";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -53,8 +54,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Textarea } from "@/components/ui/textarea";
 import { displayUrl } from "@/lib/clients";
+import { foldText, searchWords } from "@/lib/search";
 import { createCredentialSchema, updateCredentialSchema } from "@/lib/validations/clients";
 import { createCredential, deleteCredential, revealCredential, updateCredential } from "../actions";
 import type { CredentialRow } from "../types";
@@ -88,10 +91,24 @@ async function copyText(text: string, message: string) {
 export function CredentialsSection({ clientId, credentials, isAdmin, vaultEnabled, archived }: CredentialsSectionProps) {
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [open, setOpen] = useState(false);
+  // Cada abertura é um formulário novo (senão "Novo acesso" reabre com o último digitado, senha inclusive).
+  const [openings, setOpenings] = useState(0);
   const canManage = isAdmin && vaultEnabled && !archived;
+  const [search, setSearch] = useState("");
+  // Como na busca global: sem acento, e cada palavra precisa aparecer (em qualquer ordem).
+  // Só serviço, endereço e login: senha e observações são cifradas e não saem do servidor.
+  const filtered = useMemo(() => {
+    const words = searchWords(search);
+    if (words.length === 0) return credentials;
+    return credentials.filter((credential) => {
+      const text = foldText(`${credential.service} ${credential.url ?? ""} ${credential.username ?? ""}`);
+      return words.every((word) => text.includes(word));
+    });
+  }, [credentials, search]);
 
   function openDialog(state: DialogState) {
     setDialog(state);
+    setOpenings((count) => count + 1);
     setOpen(true);
   }
 
@@ -137,19 +154,46 @@ export function CredentialsSection({ clientId, credentials, isAdmin, vaultEnable
             </p>
           </div>
         ) : (
-          <ul className="divide-y rounded-lg border">
-            {credentials.map((credential) => (
-              <CredentialItem
-                key={credential.id}
-                credential={credential}
-                isAdmin={isAdmin}
-                vaultEnabled={vaultEnabled}
-                canManage={canManage}
-                onEdit={(notes) => openDialog({ kind: "edit", credential, notes })}
-                onDelete={() => openDialog({ kind: "delete", credential })}
+          <>
+            <InputGroup className="sm:max-w-xs">
+              <InputGroupAddon>
+                <SearchIcon />
+              </InputGroupAddon>
+              <InputGroupInput
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape" && search) {
+                    event.preventDefault();
+                    setSearch("");
+                  }
+                }}
+                placeholder="Buscar por serviço, endereço ou login"
+                aria-label="Buscar no cofre"
+                autoComplete="off"
+                spellCheck={false}
               />
-            ))}
-          </ul>
+            </InputGroup>
+            {filtered.length === 0 ? (
+              <p className="rounded-lg border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
+                Nenhum acesso encontrado para “{search.trim()}”.
+              </p>
+            ) : (
+              <ul className="divide-y rounded-lg border">
+                {filtered.map((credential) => (
+                  <CredentialItem
+                    key={credential.id}
+                    credential={credential}
+                    isAdmin={isAdmin}
+                    vaultEnabled={vaultEnabled}
+                    canManage={canManage}
+                    onEdit={(notes) => openDialog({ kind: "edit", credential, notes })}
+                    onDelete={() => openDialog({ kind: "delete", credential })}
+                  />
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </CardContent>
 
@@ -157,7 +201,7 @@ export function CredentialsSection({ clientId, credentials, isAdmin, vaultEnable
         <DeleteCredentialDialog open={open} onOpenChange={setOpen} credential={dialog.credential} />
       ) : dialog ? (
         <CredentialFormDialog
-          key={dialog.kind === "edit" ? dialog.credential.id : "create"}
+          key={openings}
           open={open}
           onOpenChange={setOpen}
           clientId={clientId}

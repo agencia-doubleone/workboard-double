@@ -1,10 +1,11 @@
 "use client";
 
-import { CakeIcon, CalendarDaysIcon, ClockAlertIcon } from "lucide-react";
+import { CakeIcon, CalendarDaysIcon, CalendarHeartIcon, ClockAlertIcon, PartyPopperIcon } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
 import { ClientLogo } from "@/components/client-logo";
+import { Hint } from "@/components/hint";
 import { JobStatusBadge } from "@/components/job-status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -13,7 +14,7 @@ import { UserAvatar } from "@/components/user-avatar";
 import { WEEKDAYS } from "@/lib/calendar";
 import { cn } from "@/lib/utils";
 import { AssigneeAvatars } from "../trabalhos/job-widgets";
-import type { CalendarBirthday, CalendarDay, CalendarItem, CalendarJob } from "./types";
+import type { CalendarBirthday, CalendarClientDate, CalendarDay, CalendarItem, CalendarJob } from "./types";
 
 /** Quantos itens cabem numa célula da grade; o resto vira "+N". */
 const ITEMS_PER_CELL = 3;
@@ -83,9 +84,7 @@ export function CalendarView({ days, emptyText }: { days: CalendarDay[]; emptyTe
               <SheetHeader className="border-b">
                 <SheetTitle className="first-letter:uppercase">{selected.title}</SheetTitle>
                 <SheetDescription>
-                  {selected.items.length === 0
-                    ? "Nenhuma entrega nem aniversário."
-                    : describeCount(selected.items)}
+                  {selected.items.length === 0 ? "Nada marcado neste dia." : describeCount(selected.items)}
                 </SheetDescription>
               </SheetHeader>
               <div className="overflow-y-auto p-4">
@@ -105,10 +104,12 @@ export function CalendarView({ days, emptyText }: { days: CalendarDay[]; emptyTe
 
 function describeCount(items: CalendarItem[]) {
   const jobs = items.filter((item) => item.kind === "job").length;
-  const birthdays = items.length - jobs;
+  const birthdays = items.filter((item) => item.kind === "birthday").length;
+  const clientDates = items.filter((item) => item.kind === "client").length;
   return [
     jobs > 0 && `${jobs} ${jobs === 1 ? "entrega" : "entregas"}`,
     birthdays > 0 && `${birthdays} ${birthdays === 1 ? "aniversário" : "aniversários"}`,
+    clientDates > 0 && `${clientDates} ${clientDates === 1 ? "data de cliente" : "datas de clientes"}`,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -142,7 +143,13 @@ function DayCell({ day, onOpen }: { day: CalendarDay; onOpen: () => void }) {
       <ul className={cn("flex min-w-0 flex-col gap-0.5", !day.inMonth && "opacity-60")}>
         {shown.map((item) => (
           <li key={`${item.kind}:${item.id}`} className="min-w-0">
-            {item.kind === "job" ? <JobChip job={item} /> : <BirthdayChip person={item} />}
+            {item.kind === "job" ? (
+              <JobChip job={item} />
+            ) : item.kind === "client" ? (
+              <ClientDateChip occasion={item} />
+            ) : (
+              <BirthdayChip person={item} />
+            )}
           </li>
         ))}
       </ul>
@@ -165,35 +172,78 @@ function DayCell({ day, onOpen }: { day: CalendarDay; onOpen: () => void }) {
 /** Trabalho na grade: nas cores do status; atrasado ganha borda e relógio; encerrado fica apagado. */
 function JobChip({ job }: { job: CalendarJob }) {
   return (
-    <Link
-      href={`/trabalhos/${job.pit}`}
-      onClick={(event) => event.stopPropagation()}
-      title={`#${job.pit} ${job.name} · ${job.clientName} · ${job.status.name}${job.overdue ? " · atrasado" : ""}`}
-      className={cn(
-        "flex h-5 min-w-0 items-center gap-1 rounded-[5px] px-1.5 text-xs font-medium outline-none hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring/50",
-        job.overdue && "ring-1 ring-destructive ring-inset",
-        job.done && "line-through opacity-55",
-      )}
-      // Cores do cadastro do status (não seguem o tema, como no selo).
-      style={{ color: job.status.textColor, backgroundColor: job.status.backgroundColor }}
+    <Hint
+      label={
+        <span className="flex flex-col gap-0.5">
+          <span>
+            #{job.pit} {job.name}
+          </span>
+          <span className="font-normal opacity-80">
+            {job.clientName} · {job.status.name}
+            {job.overdue && " · atrasado"}
+          </span>
+        </span>
+      }
     >
-      {job.overdue && <ClockAlertIcon aria-label="Atrasado" className="size-3 shrink-0" />}
-      <span className="shrink-0 tabular-nums">#{job.pit}</span>
-      <span className="truncate">{job.name}</span>
-    </Link>
+      <Link
+        href={`/trabalhos/${job.pit}`}
+        onClick={(event) => event.stopPropagation()}
+        className={cn(
+          "flex h-5 min-w-0 items-center gap-1 rounded-[5px] px-1.5 text-xs font-medium outline-none hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring/50",
+          job.overdue && "ring-1 ring-destructive ring-inset",
+          job.done && "line-through opacity-55",
+        )}
+        // Cores do cadastro do status (não seguem o tema, como no selo).
+        style={{ color: job.status.textColor, backgroundColor: job.status.backgroundColor }}
+      >
+        {job.overdue && <ClockAlertIcon aria-label="Atrasado" className="size-3 shrink-0" />}
+        <span className="shrink-0 tabular-nums">#{job.pit}</span>
+        <span className="truncate">{job.name}</span>
+      </Link>
+    </Hint>
   );
 }
 
 function BirthdayChip({ person }: { person: CalendarBirthday }) {
   const firstName = person.name.split(" ")[0];
   return (
-    <span
-      title={`Aniversário de ${person.name}`}
-      className="flex h-5 min-w-0 items-center gap-1 rounded-[5px] bg-primary-soft px-1.5 text-xs font-medium text-primary-ink"
+    <Hint label={person.isViewer ? "Seu aniversário 🎉" : `Aniversário de ${person.name}`}>
+      <span className="flex h-5 min-w-0 items-center gap-1 rounded-[5px] bg-primary-soft px-1.5 text-xs font-medium text-primary-ink">
+        <CakeIcon className="size-3 shrink-0" />
+        <span className="truncate">{person.isViewer ? "Seu aniversário" : firstName}</span>
+      </span>
+    </Hint>
+  );
+}
+
+/** "Aniversário da empresa · 12 anos" ou só o nome da data. */
+function occasionText(occasion: CalendarClientDate) {
+  return occasion.age ? `${occasion.label} · ${occasion.age}` : occasion.label;
+}
+
+/** Data de cliente na grade: neutra, com o nome do cliente; leva à página dele. */
+function ClientDateChip({ occasion }: { occasion: CalendarClientDate }) {
+  const Icon = occasion.founding ? PartyPopperIcon : CalendarHeartIcon;
+  return (
+    <Hint
+      label={
+        <span className="flex flex-col gap-0.5">
+          <span>{occasion.clientName}</span>
+          <span className="font-normal opacity-80">{occasionText(occasion)}</span>
+        </span>
+      }
     >
-      <CakeIcon className="size-3 shrink-0" />
-      <span className="truncate">{person.isViewer ? "Seu aniversário" : firstName}</span>
-    </span>
+      <Link
+        href={`/clientes/${occasion.clientSlug}`}
+        onClick={(event) => event.stopPropagation()}
+        className="flex h-5 min-w-0 items-center gap-1 rounded-[5px] bg-muted px-1.5 text-xs font-medium text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50"
+      >
+        <Icon className="size-3 shrink-0 text-muted-foreground" />
+        <span className="truncate">
+          {occasion.clientName} · {occasion.age ?? occasion.label}
+        </span>
+      </Link>
+    </Hint>
   );
 }
 
@@ -202,7 +252,26 @@ function ItemList({ items, onNavigate }: { items: CalendarItem[]; onNavigate?: (
   return (
     <ul className="flex flex-col gap-2">
       {items.map((item) =>
-        item.kind === "birthday" ? (
+        item.kind === "client" ? (
+          <li key={`client:${item.id}`}>
+            <Link
+              href={`/clientes/${item.clientSlug}`}
+              onClick={onNavigate}
+              className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2.5 shadow-raised outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/50"
+            >
+              <ClientLogo name={item.clientName} logoUrl={item.clientLogoUrl} className="size-8 text-[10px]" />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate text-sm font-medium">{item.clientName}</span>
+                <span className="text-xs text-muted-foreground">{occasionText(item)}</span>
+              </div>
+              {item.founding ? (
+                <PartyPopperIcon className="size-4 shrink-0 text-muted-foreground" />
+              ) : (
+                <CalendarHeartIcon className="size-4 shrink-0 text-muted-foreground" />
+              )}
+            </Link>
+          </li>
+        ) : item.kind === "birthday" ? (
           <li key={`birthday:${item.id}`} className="flex items-center gap-3 rounded-lg bg-primary-soft px-3 py-2.5">
             <UserAvatar name={item.name} imageUrl={item.imageUrl} className="size-8" />
             <div className="flex min-w-0 flex-1 flex-col">

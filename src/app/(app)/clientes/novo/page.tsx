@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 
+import { ResetOnNavigation } from "@/components/reset-on-navigation";
 import { PageHeader } from "@/components/shell/page-header";
 import { PageSkeleton } from "@/components/shell/page-skeleton";
 import { requireAdmin } from "@/lib/session";
@@ -24,7 +25,9 @@ async function NewClientContent() {
   return (
     <div className="flex flex-col gap-8">
       <PageHeader title="Novo cliente" description="Cadastre o cliente; o cofre de senhas fica na página dele, depois de salvar." />
-      <ClientForm initial={EMPTY_CLIENT_FORM} uploadsEnabled={isMediaConfigured()} />
+      <ResetOnNavigation>
+        <ClientForm initial={EMPTY_CLIENT_FORM} uploadsEnabled={isMediaConfigured()} />
+      </ResetOnNavigation>
     </div>
   );
 }

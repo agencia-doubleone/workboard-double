@@ -17,6 +17,9 @@ export type ClientRow = {
   updated: { relative: string; absolute: string };
 };
 
+/** Uma linha das datas importantes no formulário (key só para a lista do React). */
+export type ClientDateDraft = { key: string; label: string; date: string; yearly: boolean };
+
 export type ClientFormValues = {
   clientId?: string;
   slug?: string;
@@ -32,6 +35,9 @@ export type ClientFormValues = {
   genders: Gender[];
   socialClasses: SocialClass[];
   notes: string;
+  /** "AAAA-MM-DD" ou "" sem data. */
+  foundedOn: string;
+  dates: ClientDateDraft[];
 };
 
 export type CredentialRow = {

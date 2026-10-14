@@ -17,13 +17,14 @@ import { CLIENT_LINKS, displayUrl, formatAgeRange, formatGenders, formatSocialCl
 import { formatDateTime, formatRelative } from "@/lib/format";
 import { requireSession } from "@/lib/session";
 import { listAuditLogs } from "@/server/audit/queries";
-import { findClientBySlug, listCredentials } from "@/server/clients";
+import { findClientBySlug, listClientDates, listCredentials } from "@/server/clients";
 import { resolveMediaUrl } from "@/server/media";
 import { isVaultConfigured } from "@/server/vault";
 import { presentAuditRow } from "../../auditoria/present";
 import { clientLinks } from "../present";
 import type { CredentialRow } from "../types";
 import { ClientActions } from "./client-actions";
+import { ClientDatesCard } from "./client-dates-card";
 import { CredentialsSection } from "./credentials-section";
 
 export const metadata: Metadata = { title: "Cliente" };
@@ -46,8 +47,9 @@ async function ClientContent({ params }: { params: PageProps<"/clientes/[slug]">
   // Arquivado some para a equipe; o admin ainda abre (para consultar ou reativar).
   if (!client || (client.archivedAt && !isAdmin)) notFound();
 
-  const [credentials, history] = await Promise.all([
+  const [credentials, dates, history] = await Promise.all([
     listCredentials(db, client.id),
+    listClientDates(db, client.id),
     isAdmin ? listAuditLogs(db, { entity: { type: "client", id: client.id } }) : null,
   ]);
   const now = new Date();
@@ -184,6 +186,8 @@ async function ClientContent({ params }: { params: PageProps<"/clientes/[slug]">
               </dl>
             </CardContent>
           </Card>
+
+          <ClientDatesCard foundedOn={client.foundedOn} dates={dates} isAdmin={isAdmin} />
 
           {history && (
             <Card>

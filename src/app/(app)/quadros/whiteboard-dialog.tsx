@@ -112,6 +112,8 @@ export function WhiteboardDialog({
         return;
       }
       toast.success(result.message);
+      // Quadro novo: o próximo "Novo quadro" começa limpo (a lista fica guardada pelo Next ao sair).
+      if (!editing) setValues(initial);
       onOpenChange(false);
       if (!editing && result.id) router.push(`/quadros/${result.id}`);
     });

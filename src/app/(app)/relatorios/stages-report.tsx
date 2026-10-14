@@ -4,7 +4,7 @@ import { formatDays, STALLED_AFTER_DAYS } from "@/lib/reports";
 import type { ReportJob, StageRow } from "@/server/reports";
 import { ExportCsvButton } from "./export-csv";
 import type { ReportParams } from "./params";
-import { BarList, dueCell, EmptyNote, ReportJobsTable, Section } from "./report-ui";
+import { BarList, countLabel, dueCell, EmptyNote, ReportJobsTable, Section } from "./report-ui";
 
 /** Etapas: onde o fluxo demora (pelo histórico) e o que está parado agora. */
 export function StagesReport({
@@ -50,7 +50,8 @@ export function StagesReport({
             ),
             value: stage.avgDays,
             display: formatDays(stage.avgDays),
-            color: stage.textColor,
+            neutral: true,
+            hint: `Em média ${formatDays(stage.avgDays)} neste status · ${countLabel(stage.jobs, "trabalho passou", "trabalhos passaram")} por ele`,
           }))}
         />
       </Section>

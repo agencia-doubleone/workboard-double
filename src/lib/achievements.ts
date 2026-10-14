@@ -228,7 +228,7 @@ export const ACHIEVEMENTS = {
   "ctrl-c-ctrl-v": {
     name: "Ctrl+C, Ctrl+V",
     emoji: "📋",
-    description: "Importar posts com o \"Colar do Word\".",
+    description: "Importar posts pelo JSON do planejamento.",
     rarity: "common",
     category: "planning",
   },

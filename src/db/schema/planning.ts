@@ -1,6 +1,6 @@
 import { date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 
-import type { PlanningStatus, PostSection, SocialNetwork } from "@/lib/planning";
+import type { PlanningStatus, PostKind, PostSlide, PostScene, SocialNetwork } from "@/lib/planning";
 import { user } from "./auth";
 import { client } from "./clients";
 
@@ -55,7 +55,7 @@ export const planningMonth = pgTable(
     status: text("status").$type<PlanningStatus>().notNull().default("producao"),
     /** "Conceito editorial do mês" (texto simples). */
     concept: text("concept"),
-    /** O texto colado do Word, guardado como veio (referência). */
+    /** O texto colado do Word, dos meses importados antes do JSON (só leitura; a importação nova não grava). */
     document: text("document"),
     statusChangedAt: timestamp("status_changed_at", { withTimezone: true }).defaultNow().notNull(),
     /** Última vez que o mês foi para "Ajustes pedidos" (null: nunca). A conquista "Aprovado de Primeira" depende disso. */
@@ -81,15 +81,21 @@ export const planningPost = pgTable(
     /** Dia da publicação, "AAAA-MM-DD". */
     date: date("date", { mode: "string" }),
     network: text("network").$type<SocialNetwork>(),
-    /** Formato como escrito ("Card estático", "Carrossel — 3 cards", "Reel — 30 s"). */
-    format: text("format"),
-    /** Tema do cabeçalho do documento (ex.: "DIREITO EMPRESARIAL"). */
-    topic: text("topic"),
+    // Os campos do JSON padrão (src/lib/planning-json.ts).
+    kind: text("kind").$type<PostKind>().notNull().default("estatico"),
     headline: text("headline").notNull().default(""),
-    /** A legenda (copy, com CTA e hashtags). */
+    /** "Texto de apoio" da arte. */
+    supportText: text("support_text"),
+    /** A legenda (sem o CTA e as hashtags, que têm campo próprio; composeCaption junta os três). */
     copy: text("copy").notNull().default(""),
-    /** Seções livres, na ordem: Tema central, Texto de apoio, Abordagem, Roteiro... */
-    sections: jsonb("sections").$type<PostSection[]>().notNull().default([]),
+    cta: text("cta"),
+    hashtags: text("hashtags").array().notNull().default([]),
+    /** Carrossel e Stories. */
+    slides: jsonb("slides").$type<PostSlide[]>().notNull().default([]),
+    /** Reels e Vídeo. */
+    scenes: jsonb("scenes").$type<PostScene[]>().notNull().default([]),
+    /** Observações: o que os posts do formato antigo tinham sem campo próprio (tema, formato, seções). */
+    notes: text("notes"),
     status: text("status").$type<PlanningStatus>().notNull().default("producao"),
     statusChangedAt: timestamp("status_changed_at", { withTimezone: true }).defaultNow().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

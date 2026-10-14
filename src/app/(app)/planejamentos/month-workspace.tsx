@@ -1,8 +1,8 @@
 "use client";
 
 import {
+  BracesIcon,
   ChevronDownIcon,
-  ClipboardPasteIcon,
   CopyIcon,
   EllipsisIcon,
   FileTextIcon,
@@ -17,6 +17,7 @@ import {
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { Hint } from "@/components/hint";
 import { HoldToConfirmButton } from "@/components/hold-to-confirm-button";
 import {
   AlertDialog,
@@ -42,11 +43,21 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Textarea } from "@/components/ui/textarea";
-import { isApprovedStatus, PLANNING_LIMITS, PLANNING_STATUSES, PLANNING_STATUS_KEYS, SOCIAL_NETWORKS, type SocialNetwork } from "@/lib/planning";
+import {
+  composeCaption,
+  isApprovedStatus,
+  PLANNING_LIMITS,
+  PLANNING_STATUSES,
+  PLANNING_STATUS_KEYS,
+  POST_KINDS,
+  SOCIAL_NETWORKS,
+  type SocialNetwork,
+} from "@/lib/planning";
 import { cn } from "@/lib/utils";
 import { deleteMonthPosts, deletePost, setAllPostsStatus, setConcept, setMonthStatus, setPostStatus } from "./actions";
+import { CopyPromptButton } from "./copy-prompt-button";
 import { ImportDialog } from "./import-dialog";
-import { ApprovalProgress, FORMAT_ICONS, NetworkIcon } from "./planning-ui";
+import { ApprovalProgress, KIND_ICONS, NetworkIcon } from "./planning-ui";
 import { PlanningStatusSelect } from "./planning-status-select";
 import { PostEditor } from "./post-editor";
 import type { MonthView, PostView } from "./types";
@@ -59,7 +70,7 @@ type Props = {
   defaultNetwork: SocialNetwork | null;
 };
 
-/** Um mês do planejamento: status, conceito, posts e as ações (colar do Word, novo post, em lote). */
+/** Um mês do planejamento: status, conceito, posts e as ações (importar JSON, novo post, em lote). */
 export function MonthWorkspace({ planningId, month, posts, goal, defaultNetwork }: Props) {
   const [importOpen, setImportOpen] = useState(false);
   const [editor, setEditor] = useState<{ open: boolean; post: PostView | null; key: number }>({ open: false, post: null, key: 0 });
@@ -93,9 +104,10 @@ export function MonthWorkspace({ planningId, month, posts, goal, defaultNetwork 
         </div>
         <ApprovalProgress approved={approved} total={posts.length} goal={goal} />
         <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+          <CopyPromptButton month={month.month} variant="ghost" />
           <Button variant="outline" onClick={() => setImportOpen(true)}>
-            <ClipboardPasteIcon data-icon="inline-start" />
-            Colar do Word
+            <BracesIcon data-icon="inline-start" />
+            Importar JSON
           </Button>
           <Button onClick={() => openEditor(null)}>
             <PlusIcon data-icon="inline-start" />
@@ -143,14 +155,15 @@ export function MonthWorkspace({ planningId, month, posts, goal, defaultNetwork 
             </EmptyMedia>
             <EmptyTitle>Nenhum post em {month.label}</EmptyTitle>
             <EmptyDescription>
-              Cole o documento do Word para separar os posts automaticamente, ou cadastre um a um.
+              Importe o JSON do planejamento (o prompt converte o Word nele) ou cadastre os posts um a um.
             </EmptyDescription>
           </EmptyHeader>
-          <EmptyContent className="flex-row justify-center">
+          <EmptyContent className="flex-row flex-wrap justify-center">
             <Button variant="soft" onClick={() => setImportOpen(true)}>
-              <ClipboardPasteIcon data-icon="inline-start" />
-              Colar do Word
+              <BracesIcon data-icon="inline-start" />
+              Importar JSON
             </Button>
+            <CopyPromptButton month={month.month} />
             <Button variant="outline" onClick={() => openEditor(null)}>
               <PlusIcon data-icon="inline-start" />
               Novo post
@@ -177,7 +190,7 @@ export function MonthWorkspace({ planningId, month, posts, goal, defaultNetwork 
           <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium outline-none select-none focus-visible:ring-2 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
             <FileTextIcon className="size-4 text-muted-foreground" />
             Documento original
-            <span className="text-xs font-normal text-muted-foreground">o texto colado do Word</span>
+            <span className="text-xs font-normal text-muted-foreground">o texto colado do Word, antes do JSON</span>
             <ChevronDownIcon className="ml-auto size-4 text-muted-foreground transition-transform group-open:rotate-180" />
           </summary>
           <pre className="max-h-[32rem] overflow-auto border-t px-4 py-3 font-sans text-xs leading-relaxed whitespace-pre-wrap text-muted-foreground">
@@ -193,8 +206,6 @@ export function MonthWorkspace({ planningId, month, posts, goal, defaultNetwork 
         month={month.month}
         monthLabel={month.label}
         existingPosts={posts.length}
-        hasConcept={Boolean(month.concept)}
-        defaultNetwork={defaultNetwork}
       />
       <PostEditor
         key={editor.key}
@@ -303,13 +314,14 @@ function ConceptCard({ planningId, month }: { planningId: string; month: MonthVi
 
 function PostCard({ post, index, onEdit, onDelete }: { post: PostView; index: number; onEdit: () => void; onDelete: () => void }) {
   const [expanded, setExpanded] = useState(false);
-  const FormatIcon = FORMAT_ICONS[post.formatKind];
+  const KindIcon = KIND_ICONS[post.kind];
+  const caption = composeCaption(post);
   const longCopy = post.copy.split("\n").length > 6 || post.copy.length > 600;
 
   async function copyCaption() {
     try {
-      await navigator.clipboard.writeText(post.copy);
-      toast.success("Legenda copiada.");
+      await navigator.clipboard.writeText(caption);
+      toast.success("Legenda copiada (copy, CTA e hashtags).");
     } catch {
       toast.error("Não foi possível copiar.");
     }
@@ -322,24 +334,21 @@ function PostCard({ post, index, onEdit, onDelete }: { post: PostView; index: nu
         <span className={cn("text-sm font-medium tabular-nums", !post.dateLabel && "text-muted-foreground")}>
           {post.dateLabel ?? "Sem data"}
         </span>
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="flex items-center gap-2 text-xs text-muted-foreground">
           {post.network && (
-            <span className="flex items-center gap-1" title={SOCIAL_NETWORKS[post.network]}>
-              <NetworkIcon network={post.network} />
-            </span>
+            <Hint label={SOCIAL_NETWORKS[post.network]}>
+              <span className="flex items-center">
+                <NetworkIcon network={post.network} />
+              </span>
+            </Hint>
           )}
-          {post.format && (
-            <span className="flex items-center gap-1">
-              <FormatIcon className="size-3.5" />
-              {post.format}
-            </span>
-          )}
-        </span>
-        {post.topic && (
-          <span className="max-w-64 truncate rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground uppercase">
-            {post.topic}
+          <span className="flex items-center gap-1">
+            <KindIcon className="size-3.5" />
+            {POST_KINDS[post.kind].label}
+            {post.slides.length > 0 && ` · ${post.slides.length} ${post.slides.length === 1 ? "slide" : "slides"}`}
+            {post.scenes.length > 0 && ` · ${post.scenes.length} ${post.scenes.length === 1 ? "cena" : "cenas"}`}
           </span>
-        )}
+        </span>
         <div className="ml-auto flex items-center gap-1">
           <PlanningStatusSelect label="Status do post" value={post.status} onSave={(status) => setPostStatus({ postId: post.id, status })} />
           <DropdownMenu>
@@ -351,7 +360,7 @@ function PostCard({ post, index, onEdit, onDelete }: { post: PostView; index: nu
                 <PencilIcon />
                 Editar
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={copyCaption} disabled={!post.copy}>
+              <DropdownMenuItem onClick={copyCaption} disabled={!caption}>
                 <CopyIcon />
                 Copiar legenda
               </DropdownMenuItem>
@@ -365,45 +374,105 @@ function PostCard({ post, index, onEdit, onDelete }: { post: PostView; index: nu
         </div>
       </header>
 
-      <button type="button" onClick={onEdit} className="text-left text-base leading-snug font-semibold outline-none hover:underline focus-visible:underline">
-        {post.headline || <span className="text-muted-foreground">Sem headline</span>}
-      </button>
+      {/* A arte: headline e texto de apoio. */}
+      <div className="flex flex-col gap-1">
+        <button
+          type="button"
+          onClick={onEdit}
+          className="text-left text-base leading-snug font-semibold whitespace-pre-line outline-none hover:underline focus-visible:underline"
+        >
+          {post.headline || <span className="text-muted-foreground">Sem headline</span>}
+        </button>
+        {post.supportText && <p className="text-sm leading-relaxed whitespace-pre-line">{post.supportText}</p>}
+      </div>
 
-      {post.copy && (
-        <div className="flex flex-col gap-1">
-          <p className={cn("text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground", !expanded && longCopy && "line-clamp-6")}>
-            {post.copy}
-          </p>
-          {longCopy && (
-            <button
-              type="button"
-              onClick={() => setExpanded((current) => !current)}
-              className="self-start text-xs font-medium text-primary-ink outline-none hover:underline focus-visible:underline"
-            >
-              {expanded ? "Ver menos" : "Ver a legenda inteira"}
-            </button>
+      {/* A legenda: copy, CTA e hashtags (o "Copiar legenda" junta os três). */}
+      {(post.copy || post.cta || post.hashtags.length > 0) && (
+        <div className="flex flex-col gap-2 border-t pt-3">
+          {post.copy && (
+            <div className="flex flex-col gap-1">
+              <p className={cn("text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground", !expanded && longCopy && "line-clamp-6")}>
+                {post.copy}
+              </p>
+              {longCopy && (
+                <button
+                  type="button"
+                  onClick={() => setExpanded((current) => !current)}
+                  className="self-start text-xs font-medium text-primary-ink outline-none hover:underline focus-visible:underline"
+                >
+                  {expanded ? "Ver menos" : "Ver a legenda inteira"}
+                </button>
+              )}
+            </div>
           )}
+          {post.cta && (
+            <p className="text-sm leading-relaxed whitespace-pre-line">
+              <span className="mr-1.5 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">CTA</span>
+              {post.cta}
+            </p>
+          )}
+          {post.hashtags.length > 0 && <p className="text-xs leading-relaxed text-primary-ink">{post.hashtags.join(" ")}</p>}
         </div>
       )}
 
-      {post.sections.length > 0 && (
+      {post.slides.length > 0 && (
+        <PartsDetails
+          title="Slides"
+          items={post.slides.map((slide, position) => (
+            <div key={position} className="flex min-w-0 flex-col gap-0.5">
+              {slide.headline && <span className="font-medium whitespace-pre-line">{slide.headline}</span>}
+              {slide.supportText && <span className="whitespace-pre-line text-muted-foreground">{slide.supportText}</span>}
+            </div>
+          ))}
+        />
+      )}
+      {post.scenes.length > 0 && (
+        <PartsDetails
+          title="Roteiro"
+          items={post.scenes.map((scene, position) => (
+            <span key={position} className="whitespace-pre-line">
+              {scene.text}
+            </span>
+          ))}
+        />
+      )}
+      {post.notes && (
         <details className="group rounded-lg border">
-          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs font-medium text-muted-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
-            Detalhes
-            <span className="truncate font-normal">{post.sections.map((section) => section.label).join(" · ")}</span>
+          <summary className={summaryClass}>
+            Observações
+            <span className="truncate font-normal">do formato antigo</span>
             <ChevronDownIcon className="ml-auto size-4 shrink-0 transition-transform group-open:rotate-180" />
           </summary>
-          <dl className="flex flex-col gap-3 border-t px-3 py-3">
-            {post.sections.map((section, position) => (
-              <div key={position} className="flex flex-col gap-0.5">
-                <dt className="text-xs font-medium text-muted-foreground">{section.label}</dt>
-                <dd className="text-sm leading-relaxed whitespace-pre-wrap">{section.text}</dd>
-              </div>
-            ))}
-          </dl>
+          <p className="border-t px-3 py-3 text-sm leading-relaxed whitespace-pre-wrap">{post.notes}</p>
         </details>
       )}
     </article>
+  );
+}
+
+const summaryClass =
+  "flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs font-medium text-muted-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden";
+
+/** Slides do carrossel ou cenas do roteiro, numerados, num bloco que abre. */
+function PartsDetails({ title, items }: { title: string; items: React.ReactNode[] }) {
+  return (
+    <details className="group rounded-lg border">
+      <summary className={summaryClass}>
+        {title}
+        <span className="font-normal tabular-nums">{items.length}</span>
+        <ChevronDownIcon className="ml-auto size-4 shrink-0 transition-transform group-open:rotate-180" />
+      </summary>
+      <ol className="flex flex-col gap-3 border-t px-3 py-3 text-sm leading-relaxed">
+        {items.map((item, position) => (
+          <li key={position} className="flex gap-3">
+            <span className="flex size-5 shrink-0 items-center justify-center rounded bg-muted text-[11px] font-semibold tabular-nums">
+              {position + 1}
+            </span>
+            {item}
+          </li>
+        ))}
+      </ol>
+    </details>
   );
 }
 

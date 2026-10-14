@@ -12,7 +12,7 @@ import { UserAvatar } from "@/components/user-avatar";
 import { db } from "@/db";
 import { formatCompactDay, formatMonth, isMonthKey, monthOf } from "@/lib/calendar";
 import { todayInSaoPaulo } from "@/lib/jobs";
-import { DEFAULT_PLANNING_STATUS, formatKind, SOCIAL_NETWORKS } from "@/lib/planning";
+import { DEFAULT_PLANNING_STATUS, SOCIAL_NETWORKS } from "@/lib/planning";
 import { requireSession } from "@/lib/session";
 import { resolveMediaUrl } from "@/server/media";
 import { findPlanningBySlug, findPlanningMonth, listPlanningPosts } from "@/server/planning";
@@ -151,12 +151,15 @@ async function PlanningContent({
           date: post.date,
           dateLabel: post.date ? formatCompactDay(post.date) : null,
           network: post.network,
-          format: post.format,
-          formatKind: formatKind(post.format),
-          topic: post.topic,
+          kind: post.kind,
           headline: post.headline,
+          supportText: post.supportText,
           copy: post.copy,
-          sections: post.sections,
+          cta: post.cta,
+          hashtags: post.hashtags,
+          slides: post.slides,
+          scenes: post.scenes,
+          notes: post.notes,
           status: post.status,
         }))}
       />

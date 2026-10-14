@@ -17,6 +17,7 @@ import { PLANNING_STATUSES, PLANNING_STATUS_KEYS } from "@/lib/planning";
 import { requireSession } from "@/lib/session";
 import { resolveMediaUrl } from "@/server/media";
 import { listPlanningsForMonth } from "@/server/planning";
+import { CopyPromptButton } from "./copy-prompt-button";
 import { ApprovalProgress, MonthNav, NetworkIcon, PlanningStatusBadge } from "./planning-ui";
 
 export const metadata: Metadata = { title: "Planejamentos" };
@@ -54,10 +55,13 @@ async function PlanningList({ searchParams }: { searchParams: PageProps<"/planej
         title="Planejamentos"
         description="Conteúdo de redes sociais dos clientes, mês a mês: do texto à aprovação."
         actions={
-          <Link href="/planejamentos/novo" className={buttonVariants()}>
-            <PlusIcon data-icon="inline-start" />
-            Novo planejamento
-          </Link>
+          <>
+            <CopyPromptButton month={month} />
+            <Link href="/planejamentos/novo" className={buttonVariants()}>
+              <PlusIcon data-icon="inline-start" />
+              Novo planejamento
+            </Link>
+          </>
         }
       />
 

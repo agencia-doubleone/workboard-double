@@ -99,6 +99,20 @@
       "when": 1791940269558,
       "tag": "0013_client_dates",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791944335704,
+      "tag": "0014_planning_post_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1791944361951,
+      "tag": "0015_planning_post_legacy_columns",
+      "breakpoints": true
     }
   ]
 }

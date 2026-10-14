@@ -29,7 +29,7 @@ async function NewPlanningContent() {
     <div className="flex flex-col gap-8">
       <PageHeader
         title="Novo planejamento"
-        description="Escolha o cliente. Depois, cada mês ganha os posts (colados do Word ou cadastrados um a um) e o próprio status."
+        description="Escolha o cliente. Depois, cada mês ganha os posts (importados do JSON ou cadastrados um a um) e o próprio status."
       />
       <ResetOnNavigation>
         <PlanningForm

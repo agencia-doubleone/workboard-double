@@ -165,7 +165,7 @@ export async function onPlanningMembersAdded(
   return unlocks;
 }
 
-/** Posts novos num mês (criados um a um ou importados do Word). */
+/** Posts novos num mês (criados um a um ou importados do JSON). */
 export async function onPlanningPostsAdded(
   database: Database,
   input: { planningId: string; monthId: string; month: string; actorId: string; imported: boolean; at?: Date },

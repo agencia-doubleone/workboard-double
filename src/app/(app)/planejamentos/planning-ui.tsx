@@ -17,7 +17,7 @@ import { Hint } from "@/components/hint";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { formatMonth, shiftMonth, type MonthKey } from "@/lib/calendar";
-import { PLANNING_STATUSES, SOCIAL_NETWORKS, type PlanningStatus, type PostFormatKind, type SocialNetwork } from "@/lib/planning";
+import { PLANNING_STATUSES, SOCIAL_NETWORKS, type PlanningStatus, type PostKind, type SocialNetwork } from "@/lib/planning";
 import { cn } from "@/lib/utils";
 
 // Peças pequenas dos planejamentos, usadas na lista e na página do cliente.
@@ -45,10 +45,10 @@ export function NetworkIcon({ network, className }: { network: SocialNetwork; cl
   return <Icon className={cn("size-3.5", className)} aria-label={SOCIAL_NETWORKS[network]} />;
 }
 
-export const FORMAT_ICONS: Record<PostFormatKind, LucideIcon> = {
-  static: ImageIcon,
-  carousel: GalleryHorizontalIcon,
-  reel: ClapperboardIcon,
+export const KIND_ICONS: Record<PostKind, LucideIcon> = {
+  estatico: ImageIcon,
+  carrossel: GalleryHorizontalIcon,
+  reels: ClapperboardIcon,
   stories: SmartphoneIcon,
   video: VideoIcon,
 };

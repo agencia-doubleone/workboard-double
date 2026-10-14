@@ -1,6 +1,6 @@
 // Formas serializáveis que as páginas de planejamentos entregam aos client components.
 
-import type { PlanningStatus, PostFormatKind, PostSection, SocialNetwork } from "@/lib/planning";
+import type { PlanningStatus, PostKind, PostScene, PostSlide, SocialNetwork } from "@/lib/planning";
 
 export type PlanningPersonView = { id: string; name: string; imageUrl: string | null };
 
@@ -21,12 +21,16 @@ export type PostView = {
   /** "qua 02/09" */
   dateLabel: string | null;
   network: SocialNetwork | null;
-  format: string | null;
-  formatKind: PostFormatKind;
-  topic: string | null;
+  kind: PostKind;
   headline: string;
+  supportText: string | null;
   copy: string;
-  sections: PostSection[];
+  cta: string | null;
+  hashtags: string[];
+  slides: PostSlide[];
+  scenes: PostScene[];
+  /** Observações dos posts do formato antigo. */
+  notes: string | null;
   status: PlanningStatus;
 };
 
@@ -39,5 +43,6 @@ export type MonthView = {
   started: boolean;
   status: PlanningStatus;
   concept: string | null;
+  /** O texto colado do Word, dos meses importados antes do JSON (só leitura). */
   document: string | null;
 };

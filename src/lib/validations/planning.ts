@@ -1,17 +1,19 @@
 import { z } from "zod";
 
 import { isMonthKey } from "@/lib/calendar";
-import { PLANNING_LIMITS, PLANNING_STATUS_KEYS, SOCIAL_NETWORK_KEYS } from "@/lib/planning";
+import { keepKindParts, parseHashtags, PLANNING_LIMITS, PLANNING_STATUS_KEYS, POST_KIND_KEYS, SOCIAL_NETWORK_KEYS } from "@/lib/planning";
 
 const planningId = z.uuid("Planejamento inválido.");
 const month = z.string().refine(isMonthKey, "Mês inválido.");
 const status = z.enum(PLANNING_STATUS_KEYS, "Status inválido.");
 const userId = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
+/** Texto opcional: vazio ou null viram null. */
 const optionalText = (max: number, message: string) =>
   z
     .string()
     .trim()
     .max(max, message)
+    .nullable()
     .transform((value) => value || null);
 
 const planningFields = {
@@ -48,42 +50,60 @@ export const setConceptSchema = z.object({
   concept: optionalText(PLANNING_LIMITS.concept, "Conceito grande demais."),
 });
 
-const sectionsSchema = z
-  .array(
-    z.object({
-      label: z.string().trim().min(1, "Dê um nome à seção.").max(PLANNING_LIMITS.sectionLabel, "Nome da seção grande demais."),
-      text: z.string().trim().max(PLANNING_LIMITS.sectionText, "Seção grande demais."),
-    }),
-  )
-  .max(PLANNING_LIMITS.sections, `No máximo ${PLANNING_LIMITS.sections} seções.`)
-  .transform((sections) => sections.filter((section) => section.text));
+const tooLong = (max: number) => `Use até ${max.toLocaleString("pt-BR")} caracteres.`;
 
+// Os campos do JSON padrão (src/lib/planning-json.ts), já com os nomes do banco.
 const postFields = {
   date: z.iso.date("Use uma data completa.").nullable(),
   network: z.enum(SOCIAL_NETWORK_KEYS).nullable(),
-  format: optionalText(PLANNING_LIMITS.format, "Formato grande demais."),
-  topic: optionalText(PLANNING_LIMITS.topic, "Tema grande demais."),
-  headline: z.string().trim().max(PLANNING_LIMITS.headline, `Use até ${PLANNING_LIMITS.headline} caracteres.`),
-  copy: z.string().trim().max(PLANNING_LIMITS.copy, `Use até ${PLANNING_LIMITS.copy} caracteres.`),
-  sections: sectionsSchema,
+  kind: z.enum(POST_KIND_KEYS, "Tipo inválido."),
+  headline: z.string().trim().max(PLANNING_LIMITS.headline, tooLong(PLANNING_LIMITS.headline)),
+  supportText: optionalText(PLANNING_LIMITS.supportText, tooLong(PLANNING_LIMITS.supportText)),
+  copy: z.string().trim().max(PLANNING_LIMITS.copy, tooLong(PLANNING_LIMITS.copy)),
+  cta: optionalText(PLANNING_LIMITS.cta, tooLong(PLANNING_LIMITS.cta)),
+  hashtags: z
+    .array(z.string().max(PLANNING_LIMITS.hashtag, "Hashtag longa demais."))
+    .max(PLANNING_LIMITS.hashtags, `No máximo ${PLANNING_LIMITS.hashtags} hashtags.`)
+    .transform((tags) => parseHashtags(tags)),
+  slides: z
+    .array(
+      z.object({
+        headline: optionalText(PLANNING_LIMITS.headline, tooLong(PLANNING_LIMITS.headline)),
+        supportText: optionalText(PLANNING_LIMITS.supportText, tooLong(PLANNING_LIMITS.supportText)),
+      }),
+    )
+    .max(PLANNING_LIMITS.slides, `No máximo ${PLANNING_LIMITS.slides} slides.`)
+    .transform((slides) => slides.filter((slide) => slide.headline || slide.supportText)),
+  scenes: z
+    .array(z.object({ text: z.string().trim().max(PLANNING_LIMITS.sceneText, tooLong(PLANNING_LIMITS.sceneText)) }))
+    .max(PLANNING_LIMITS.scenes, `No máximo ${PLANNING_LIMITS.scenes} cenas.`)
+    .transform((scenes) => scenes.filter((scene) => scene.text)),
 };
 
 export const savePostSchema = z
-  .object({ planningId, month, postId: z.uuid().optional(), status: status.optional(), ...postFields })
-  .refine((post) => post.headline || post.copy || post.sections.length > 0, {
+  .object({
+    planningId,
+    month,
+    postId: z.uuid().optional(),
+    status: status.optional(),
+    ...postFields,
+    /** Observações dos posts do formato antigo (o editor só mostra quando o post tem). */
+    notes: optionalText(PLANNING_LIMITS.notes, tooLong(PLANNING_LIMITS.notes)).optional(),
+  })
+  .transform(keepKindParts)
+  .refine((post) => post.headline || post.copy || post.supportText || post.slides.length > 0 || post.scenes.length > 0, {
     path: ["headline"],
-    message: "Escreva a headline, a copy ou alguma seção.",
+    message: "Escreva a headline, a copy ou o conteúdo da arte.",
   });
 export type SavePostInput = z.input<typeof savePostSchema>;
 
 export const importPostsSchema = z.object({
   planningId,
   month,
-  document: z.string().max(PLANNING_LIMITS.document, "Documento grande demais."),
-  concept: optionalText(PLANNING_LIMITS.concept, "Conceito grande demais."),
   mode: z.enum(["append", "replace"]),
   posts: z
-    .array(z.object({ ...postFields, network: postFields.network.optional() }))
+    .array(z.object({ ...postFields, network: postFields.network.optional() }).transform(keepKindParts))
+    .min(1, "Escolha pelo menos um post.")
     .max(PLANNING_LIMITS.postsPerImport, `No máximo ${PLANNING_LIMITS.postsPerImport} posts por importação.`),
 });
 export type ImportPostsInput = z.input<typeof importPostsSchema>;

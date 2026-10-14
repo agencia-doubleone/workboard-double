@@ -251,7 +251,7 @@ export async function setConcept(input: { planningId: string; month: string; con
   return { ok: true, message: "Conceito salvo." };
 }
 
-/** Salva os posts lidos do documento colado (já conferidos na prévia) e guarda o texto original. */
+/** Salva os posts lidos do JSON padrão (já conferidos na prévia, src/lib/planning-json.ts). */
 export async function importPosts(input: ImportPostsInput): Promise<PlanningActionResult> {
   const ctx = await getContext();
   if (!ctx) return UNAUTHENTICATED;
@@ -264,30 +264,19 @@ export async function importPosts(input: ImportPostsInput): Promise<PlanningActi
   const current = await ensurePlanningMonth(db, found.planning.id, data.month);
   const start = data.mode === "replace" ? 0 : await nextPostPosition(db, current.id);
   const network = found.planning.networks[0] ?? "instagram";
-  await db.batch([
-    db
-      .update(planningMonth)
-      .set({ document: data.document || current.document, ...(data.concept ? { concept: data.concept } : {}) })
-      .where(eq(planningMonth.id, current.id)),
-    ...(data.mode === "replace" ? [db.delete(planningPost).where(eq(planningPost.monthId, current.id))] : []),
-    ...(data.posts.length
-      ? [
-          db.insert(planningPost).values(
-            data.posts.map((post, index) => ({
-              monthId: current.id,
-              position: start + index,
-              date: post.date,
-              network: post.network ?? network,
-              format: post.format,
-              topic: post.topic,
-              headline: post.headline,
-              copy: post.copy,
-              sections: post.sections,
-            })),
-          ),
-        ]
-      : []),
-  ]);
+  const insert = db.insert(planningPost).values(
+    data.posts.map((post, index) => ({
+      ...post,
+      monthId: current.id,
+      position: start + index,
+      network: post.network ?? network,
+    })),
+  );
+  if (data.mode === "replace") {
+    await db.batch([db.delete(planningPost).where(eq(planningPost.monthId, current.id)), insert]);
+  } else {
+    await insert;
+  }
   await recordAudit({
     action: "planning.imported",
     actor: ctx.actor,
@@ -295,24 +284,19 @@ export async function importPosts(input: ImportPostsInput): Promise<PlanningActi
     metadata: { month: data.month, posts: data.posts.length, replaced: data.mode === "replace" },
     ...ctx.meta,
   });
-  if (data.posts.length) {
-    achievementsAfter("posts importados", (database) =>
-      onPlanningPostsAdded(database, {
-        planningId: found.planning.id,
-        monthId: current.id,
-        month: data.month,
-        actorId: ctx.actor.id,
-        imported: true,
-      }),
-    );
-  }
+  achievementsAfter("posts importados", (database) =>
+    onPlanningPostsAdded(database, {
+      planningId: found.planning.id,
+      monthId: current.id,
+      month: data.month,
+      actorId: ctx.actor.id,
+      imported: true,
+    }),
+  );
 
   refresh();
   const count = data.posts.length;
-  return {
-    ok: true,
-    message: count === 0 ? "Documento guardado no mês." : `${count} ${count === 1 ? "post importado" : "posts importados"}.`,
-  };
+  return { ok: true, message: `${count} ${count === 1 ? "post importado" : "posts importados"}.` };
 }
 
 /** Cria (sem postId) ou edita um post do mês. */

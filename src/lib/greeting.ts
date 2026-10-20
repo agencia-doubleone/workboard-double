@@ -68,6 +68,21 @@ export function getHolidayGreeting(holiday: Holiday, firstName: string, now: Dat
   }
 }
 
+/**
+ * O "hoje" das datas especiais e aniversários. Em desenvolvimento,
+ * GREETING_PREVIEW_DATE (.env.local, "AAAA-MM-DD") finge outra data, para conferir.
+ */
+export function specialDayNow(now: Date, preview: string | undefined) {
+  return process.env.NODE_ENV === "development" && preview ? new Date(`${preview}T15:00:00Z`) : now;
+}
+
+/** Quantos anos a empresa completa hoje (fundação em "AAAA-MM-DD"), ou null se não é o aniversário dela. */
+export function companyAnniversaryYears(foundedOn: string | null | undefined, now: Date) {
+  if (!foundedOn || !isBirthdayToday(foundedOn, now)) return null;
+  const years = getParts(now).year - Number(foundedOn.slice(0, 4));
+  return years > 0 ? years : null;
+}
+
 /** Primeiro nome, para a saudação. */
 export function getFirstName(name: string) {
   return name.trim().split(/\s+/)[0] ?? name;

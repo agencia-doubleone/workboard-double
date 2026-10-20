@@ -45,7 +45,7 @@ export const MEDIA_TYPES = {
 export type MediaExtension = keyof typeof MEDIA_TYPES;
 
 /** Primeiro nível de pasta no CDN. Novas áreas do sistema entram aqui. */
-export const MEDIA_FOLDERS = ["geral", "trabalhos", "clientes", "usuarios", "chat", "quadros"] as const;
+export const MEDIA_FOLDERS = ["geral", "trabalhos", "clientes", "usuarios", "chat", "quadros", "portal", "solicitacoes"] as const;
 export type MediaFolder = (typeof MEDIA_FOLDERS)[number];
 
 export const MEDIA_FOLDER_LABELS: Record<MediaFolder, string> = {
@@ -55,6 +55,8 @@ export const MEDIA_FOLDER_LABELS: Record<MediaFolder, string> = {
   usuarios: "Usuários",
   chat: "Chat",
   quadros: "Quadros",
+  portal: "Portal do cliente",
+  solicitacoes: "Solicitações",
 };
 
 export const MEDIA_NAME_MAX_LENGTH = 200;

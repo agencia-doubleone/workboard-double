@@ -12,7 +12,7 @@ import { UserAvatar } from "@/components/user-avatar";
 import { db } from "@/db";
 import { formatCompactDay, formatMonth, isMonthKey, monthOf } from "@/lib/calendar";
 import { todayInSaoPaulo } from "@/lib/jobs";
-import { DEFAULT_PLANNING_STATUS, SOCIAL_NETWORKS } from "@/lib/planning";
+import { DEFAULT_PLANNING_STATUS, defaultPlanningMonth, SOCIAL_NETWORKS } from "@/lib/planning";
 import { requireSession } from "@/lib/session";
 import { resolveMediaUrl } from "@/server/media";
 import { findPlanningBySlug, findPlanningMonth, listPlanningPosts } from "@/server/planning";
@@ -45,18 +45,21 @@ async function PlanningContent({
   if (!found) notFound();
   const { planning, client, members } = found;
 
-  const current = monthOf(todayInSaoPaulo());
+  const today = todayInSaoPaulo();
+  const current = monthOf(today);
+  // Sem ?mes=, abre o mês que vem (o que a equipe está planejando).
+  const standard = defaultPlanningMonth(today);
   const requested = first((await searchParams).mes);
-  const month = isMonthKey(requested) ? requested : current;
+  const month = isMonthKey(requested) ? requested : standard;
   const monthRow = await findPlanningMonth(db, planning.id, month);
   const posts = monthRow ? await listPlanningPosts(db, monthRow.id) : [];
   const base = `/planejamentos/${client.slug}`;
-  const hrefFor = (target: string) => (target === current ? base : `${base}?mes=${target}`);
+  const hrefFor = (target: string) => (target === standard ? base : `${base}?mes=${target}`);
 
   return (
     <div className="flex flex-col gap-6">
       <Link
-        href={month === current ? "/planejamentos" : `/planejamentos?mes=${month}`}
+        href={month === standard ? "/planejamentos" : `/planejamentos?mes=${month}`}
         className="flex w-fit items-center gap-1.5 text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:underline"
       >
         <ArrowLeftIcon className="size-4" />

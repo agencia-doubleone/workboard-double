@@ -40,8 +40,12 @@ const RAINBOW_SEQUENCE: Accent[] = ["rose", "amber", "green", "blue", "violet"];
 const optionClass =
   "flex cursor-default items-center justify-center rounded-md border border-transparent text-muted-foreground outline-none transition-colors select-none data-highlighted:bg-accent data-highlighted:text-foreground data-checked:border-border data-checked:bg-accent data-checked:text-foreground";
 
-/** Rodapé da sidebar: preferências de interface deste navegador (tema, cor de destaque, som e comemoração). */
-export function SettingsMenu() {
+/**
+ * Rodapé da sidebar: preferências de interface deste navegador (tema, cor de
+ * destaque, som e comemoração). No portal do cliente (`portal`), tema, cor e só a
+ * comemoração das aprovações: sem o som dos avisos nem as conquistas, que são da equipe.
+ */
+export function SettingsMenu({ portal = false }: { portal?: boolean }) {
   const { mode, accent, sound, celebrate, rainbow } = usePreferences();
   const { collapsed, surface } = useSidebarSurface();
   const accents = rainbow ? [...ACCENTS, SECRET_ACCENT] : ACCENTS;
@@ -52,16 +56,17 @@ export function SettingsMenu() {
 
   function chooseMode(value: ThemeMode) {
     setThemeMode(value);
-    if (value === "dark") reportAchievement({ type: "theme.dark" });
+    if (value === "dark" && !portal) reportAchievement({ type: "theme.dark" });
   }
 
   function chooseAccent(value: Accent) {
     setAccent(value);
-    if (value !== SECRET_ACCENT.id) reportAchievement({ type: "accent", accent: value });
+    if (value !== SECRET_ACCENT.id && !portal) reportAchievement({ type: "accent", accent: value });
   }
 
   /** Cada clique numa cor (até na que já está escolhida) entra na sequência do arco-íris. */
   function trackRainbow(value: Accent) {
+    if (portal) return;
     recentAccents.current = [...recentAccents.current, value].slice(-RAINBOW_SEQUENCE.length);
     if (recentAccents.current.join() !== RAINBOW_SEQUENCE.join()) return;
     recentAccents.current = [];
@@ -136,35 +141,60 @@ export function SettingsMenu() {
           </MenuPrimitive.RadioGroup>
         </DropdownMenuGroup>
 
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>Avisos e comemorações</DropdownMenuLabel>
-          <ToggleItem
-            checked={sound}
-            onCheckedChange={(checked) => {
-              setNotificationSound(checked);
-              // Ao ligar, uma amostra (e o clique já libera o áudio nesta aba).
-              if (checked) previewNotificationSound();
-              else reportAchievement({ type: "sound.off" });
-            }}
-            icon={sound ? Volume2Icon : VolumeXIcon}
-            label="Som dos avisos"
-          />
-          <ToggleItem
-            checked={celebrate}
-            onCheckedChange={(checked) => {
-              setCelebrate(checked);
-              if (checked) previewCelebration({ force: true });
-              else reportAchievement({ type: "celebrate.off" });
-            }}
-            icon={PartyPopperIcon}
-            label="Comemorar entregas concluídas"
-          />
-        </DropdownMenuGroup>
+        {portal ? <PortalCelebrateGroup celebrate={celebrate} /> : <AlertsGroup sound={sound} celebrate={celebrate} />}
 
         <DropdownMenuSeparator />
         <p className="px-2 py-1 text-xs text-muted-foreground">Vale só para este navegador.</p>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/** Som dos avisos e comemoração das entregas (só a equipe). */
+function AlertsGroup({ sound, celebrate }: { sound: boolean; celebrate: boolean }) {
+  return (
+    <DropdownMenuGroup>
+      <DropdownMenuLabel>Avisos e comemorações</DropdownMenuLabel>
+      <ToggleItem
+        checked={sound}
+        onCheckedChange={(checked) => {
+          setNotificationSound(checked);
+          // Ao ligar, uma amostra (e o clique já libera o áudio nesta aba).
+          if (checked) previewNotificationSound();
+          else reportAchievement({ type: "sound.off" });
+        }}
+        icon={sound ? Volume2Icon : VolumeXIcon}
+        label="Som dos avisos"
+      />
+      <ToggleItem
+        checked={celebrate}
+        onCheckedChange={(checked) => {
+          setCelebrate(checked);
+          if (checked) previewCelebration({ force: true });
+          else reportAchievement({ type: "celebrate.off" });
+        }}
+        icon={PartyPopperIcon}
+        label="Comemorar entregas concluídas"
+      />
+    </DropdownMenuGroup>
+  );
+}
+
+/** Portal do cliente: só a comemoração (confetes e som) ao aprovar um arquivo. */
+function PortalCelebrateGroup({ celebrate }: { celebrate: boolean }) {
+  return (
+    <DropdownMenuGroup>
+      <DropdownMenuLabel>Comemorações</DropdownMenuLabel>
+      <ToggleItem
+        checked={celebrate}
+        onCheckedChange={(checked) => {
+          setCelebrate(checked);
+          if (checked) previewCelebration({ force: true });
+        }}
+        icon={PartyPopperIcon}
+        label="Comemorar aprovações"
+      />
+    </DropdownMenuGroup>
   );
 }
 

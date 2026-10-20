@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { ClientLogo } from "@/components/client-logo";
+import { Stat } from "@/components/dashboard";
 import { Hint } from "@/components/hint";
 import { Table, TableBody, TableCell, TableFrame, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { UserAvatar } from "@/components/user-avatar";
@@ -23,7 +24,7 @@ import {
 } from "@/server/planning-reports";
 import { ApprovalProgress, PlanningStatusBadge } from "../planejamentos/planning-ui";
 import { ExportCsvButton } from "./export-csv";
-import { BarList, countLabel, EmptyNote, Section, shareLabel, Stat, StatGrid } from "./report-ui";
+import { BarList, countLabel, EmptyNote, Section, shareLabel, StatGrid } from "./report-ui";
 
 type Props = { entries: PlanningReportEntry[]; months: string[]; today: string };
 
@@ -50,8 +51,8 @@ export function PlanningReport({ entries, months, today }: Props) {
   const postsTotal = PLANNING_STATUS_KEYS.reduce((sum, status) => sum + statuses.posts[status], 0);
   const single = months.length === 1;
   const filename = (name: string) => `${name}-${months[0]}${single ? "" : `-a-${months[months.length - 1]}`}`;
-  const planningHref = (slug: string, month?: string) =>
-    `/planejamentos/${slug}${month && month !== currentMonth ? `?mes=${month}` : ""}`;
+  // Sem mês, a página abre no padrão dela (o mês que vem); com mês, sempre explícito.
+  const planningHref = (slug: string, month?: string) => `/planejamentos/${slug}${month ? `?mes=${month}` : ""}`;
 
   return (
     <div className="flex flex-col gap-6">

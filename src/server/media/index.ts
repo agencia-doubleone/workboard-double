@@ -28,6 +28,8 @@ import { signMediaToken, verifyMediaToken } from "./token";
 // 4. /api/media/complete: completeUpload confere o recibo, grava em `media` e audita.
 // Excluir é servidor para servidor: deleteMedia chama {MEDIA_CDN_URL}/delete.php.
 // A tela de Arquivos (admins) lista o que está de fato no CDN com list.php.
+// O portal do cliente usa o mesmo fluxo pelas rotas /api/portal-media/*: o
+// contato entra como ator externo (actor.external) e fica em uploadedByPortalUserId.
 
 /** O PHP só confere o token depois de receber o arquivo inteiro: cobre envios longos. */
 const UPLOAD_TICKET_TTL_SECONDS = 60 * 60;
@@ -114,12 +116,28 @@ export async function findMediaByKey(database: Database, key: string) {
   return found ?? null;
 }
 
+/**
+ * Quem o token e o recibo dizem ter enviado (o "uid"). Contatos do portal levam
+ * um prefixo: o recibo de um não vale na rota do outro, nem com o mesmo id.
+ */
+function uploaderUid(actor: Pick<AuditActor, "id" | "external">) {
+  return actor.external ? `portal:${actor.id}` : actor.id;
+}
+
+/** O arquivo foi enviado por este ator (da equipe ou, com external, um contato do portal). */
+export function isUploader(
+  row: Pick<MediaRow, "uploadedById" | "uploadedByPortalUserId">,
+  actor: Pick<AuditActor, "id" | "external">,
+) {
+  return actor.external ? row.uploadedByPortalUserId === actor.id : row.uploadedById === actor.id;
+}
+
 /** Autoriza um envio. Espera a entrada já validada por signMediaSchema. */
 export function createUploadTicket(input: {
   name: string;
   size: number;
   folder: MediaFolder;
-  userId: string;
+  uploader: Pick<AuditActor, "id" | "external">;
 }): MediaUploadTicket {
   const { baseUrl, secret } = getConfig();
   const type = getMediaType(input.name);
@@ -129,7 +147,7 @@ export function createUploadTicket(input: {
   const exp = nowInSeconds() + UPLOAD_TICKET_TTL_SECONDS;
   const token = signMediaToken(
     "upload",
-    { key, name: input.name, size: input.size, type: type.mime, uid: input.userId, exp },
+    { key, name: input.name, size: input.size, type: type.mime, uid: uploaderUid(input.uploader), exp },
     secret,
   );
 
@@ -155,23 +173,24 @@ export async function completeUpload(
   if (!parsed.success) return fail(400, "Recibo de envio inválido.");
 
   const { key, name, size, type, uid, iat } = parsed.data;
-  if (uid !== actor.id) return fail(403, "Este envio foi autorizado para outra pessoa.");
+  if (uid !== uploaderUid(actor)) return fail(403, "Este envio foi autorizado para outra pessoa.");
   if (nowInSeconds() - iat > RECEIPT_TTL_SECONDS) {
     return fail(400, "O recibo de envio expirou. Envie o arquivo de novo.");
   }
   const folder = key.split("/")[0];
   if (!MEDIA_FOLDERS.includes(folder as MediaFolder)) return fail(400, "Pasta inválida.");
 
+  const uploader = actor.external ? { uploadedByPortalUserId: actor.id } : { uploadedById: actor.id };
   const [inserted] = await database
     .insert(media)
-    .values({ key, folder, name, type, size, uploadedById: actor.id })
+    .values({ key, folder, name, type, size, ...uploader })
     .onConflictDoNothing({ target: media.key })
     .returning();
 
   if (!inserted) {
     // Recibo repetido (ex.: o navegador tentou de novo): sem nova auditoria.
     const existing = await findMediaByKey(database, key);
-    if (!existing || existing.uploadedById !== actor.id) return fail(409, "Este arquivo já foi registrado.");
+    if (!existing || !isUploader(existing, actor)) return fail(409, "Este arquivo já foi registrado.");
     return { ok: true, data: toMediaItem(existing) };
   }
 
@@ -200,7 +219,7 @@ export async function deleteMedia(
 ): Promise<MediaResult<{ name: string }>> {
   const row = await findMediaById(database, id);
   if (!row) return fail(404, "Arquivo não encontrado.");
-  if (row.uploadedById !== actor.id && actor.role !== "admin") {
+  if (!isUploader(row, actor) && (actor.external || actor.role !== "admin")) {
     return fail(403, "Você não tem permissão para excluir este arquivo.");
   }
 

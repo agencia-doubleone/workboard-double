@@ -13,6 +13,7 @@ import { requireAdmin } from "@/lib/session";
 import { listClientOptions, listJobs, listJobStatuses, listTeamMembers } from "@/server/jobs";
 import { resolveMediaUrl } from "@/server/media";
 import { JobsPagination, JobsToolbar } from "./jobs-toolbar";
+import { RememberJobList } from "./job-list-memory";
 import { JobsTable } from "./jobs-table";
 import { jobListHref, MY_JOBS, parseJobListParams } from "./params";
 import { toJobRow, toPersonView, toStatusOption } from "./present";
@@ -80,7 +81,9 @@ async function JobsContent({ searchParams }: { searchParams: PageProps<"/trabalh
           clients={clients.map((item) => ({ id: item.id, name: item.name, logoUrl: resolveMediaUrl(item.logoKey) }))}
           people={people.map(toPersonView)}
         />
+        <RememberJobList href={jobListHref(params)} label="Trabalhos" />
         <JobsTable
+          returnTo={jobListHref(params)}
           rows={result.rows.map((item) => toJobRow(item, today))}
           statuses={statuses.map(toStatusOption)}
           isAdmin

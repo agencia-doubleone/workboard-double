@@ -7,6 +7,9 @@ import {
   chatMessageAttachment,
   client,
   clientCredential,
+  clientRequest,
+  clientRequestMessage,
+  clientRequestMessageAttachment,
   job,
   jobAssignee,
   jobMessage,
@@ -14,9 +17,11 @@ import {
   jobStatus,
   media,
   planning,
+  portalUser,
   user,
   whiteboard,
 } from "@/db/schema";
+import { requestCode, requestNumberInQuery, REQUEST_STATUSES } from "@/lib/client-requests";
 import { CLIENT_LINK_KEYS, CLIENT_LINKS } from "@/lib/clients";
 import { formatDayLabel } from "@/lib/format";
 import { splitMentions } from "@/lib/jobs";
@@ -37,14 +42,15 @@ import { whiteboardVisibleTo } from "@/server/whiteboards";
 
 // Busca global (Ctrl+K). Cada grupo respeita o mesmo acesso das telas:
 // trabalhos e as mensagens/arquivos deles só de quem está no trabalho (ou
-// admins), chat só das conversas da pessoa, quadros pela regra dos quadros,
-// clientes arquivados só para admins. Sem "server-only": roda nos scripts
+// admins), solicitações (e a conversa delas) só para admins, chat só das
+// conversas da pessoa, quadros pela regra dos quadros, clientes arquivados só
+// para admins. Sem "server-only": roda nos scripts
 // contra PGlite (por isso a URL dos arquivos vem de fora, em `mediaUrl`).
 //
 // A comparação ignora maiúsculas e acentos (translate no SQL, foldText no JS) e
 // cada palavra precisa aparecer, em qualquer ordem e em qualquer dos campos.
 
-const LIMITS = { job: 6, client: 5, message: 6, file: 5, link: 6, credential: 4, board: 4, planning: 3 } as const;
+const LIMITS = { job: 6, request: 5, client: 5, message: 6, file: 5, link: 6, credential: 4, board: 4, planning: 3 } as const;
 /** Mensagens lidas para achar links e caminhos dentro delas. */
 const MESSAGE_SCAN = 40;
 
@@ -64,8 +70,11 @@ function hasAllWords(parts: SQLWrapper[], words: string[]): SQL {
 
 export type SearchViewer = { id: string; isAdmin: boolean };
 
+const CLOSED_REQUEST_STATUSES = Object.entries(REQUEST_STATUSES).flatMap(([status, item]) => (item.closed ? [status] : []));
+
 const GROUP_LABELS: Record<Exclude<SearchKind, "page">, string> = {
   job: "Trabalhos",
+  request: "Solicitações",
   client: "Clientes",
   message: "Mensagens",
   file: "Arquivos",
@@ -83,6 +92,7 @@ export async function globalSearch(
 ): Promise<SearchGroup[]> {
   const words = searchWords(query);
   const pit = searchPit(query);
+  const requestNumber = requestNumberInQuery(query);
   if (words.length === 0) return [];
   const now = options.now ?? new Date();
   const when = (date: Date) => formatDayLabel(date, now);
@@ -92,14 +102,34 @@ export async function globalSearch(
     ? undefined
     : sql`exists (select 1 from ${jobAssignee} where ${jobAssignee.jobId} = ${job.id} and ${jobAssignee.userId} = ${viewer.id})`;
   const clientVisible = viewer.isAdmin ? undefined : isNull(client.archivedAt);
+  // "S-12" (não um número solto, que é o PIT) também acha os trabalhos criados a partir da S-12.
+  const fromRequest =
+    pit === null && requestNumber !== null
+      ? sql`${job.clientRequestId} in (select ${clientRequest.id} from ${clientRequest} where ${clientRequest.number} = ${requestNumber})`
+      : undefined;
+  // Solicitações: a tela é só dos admins; para os outros, nenhuma consulta.
+  const none = Promise.resolve([]);
   // Conversas do chat: só as da própria pessoa.
   const inMyConversation = and(
     eq(chatMember.conversationId, chatMessage.conversationId),
     eq(chatMember.userId, viewer.id),
   );
 
-  const [jobs, clients, plannings, boards, jobMessages, chatMessages, jobFiles, chatFiles, clientLinks, credentials] =
-    await Promise.all([
+  const [
+    jobs,
+    clients,
+    plannings,
+    boards,
+    jobMessages,
+    chatMessages,
+    jobFiles,
+    chatFiles,
+    clientLinks,
+    credentials,
+    requests,
+    requestMessages,
+    requestFiles,
+  ] = await Promise.all([
       database
         .select({
           id: job.id,
@@ -118,7 +148,7 @@ export async function globalSearch(
             jobVisible,
             pit !== null
               ? or(eq(job.pit, pit), hasAllWords([job.name, client.name], words))
-              : hasAllWords([job.name, client.name], words),
+              : or(fromRequest, hasAllWords([job.name, client.name], words)),
           ),
         )
         // O PIT exato primeiro; depois os em aberto; os cancelados por último; depois os mais novos.
@@ -260,6 +290,71 @@ export async function globalSearch(
         .where(and(clientVisible, hasAllWords([clientCredential.service, clientCredential.url, client.name], words)))
         .orderBy(asc(client.name), asc(clientCredential.service))
         .limit(LIMITS.credential),
+      !viewer.isAdmin
+        ? none
+        : database
+            .select({
+              id: clientRequest.id,
+              number: clientRequest.number,
+              title: clientRequest.title,
+              status: clientRequest.status,
+              clientName: client.name,
+              clientLogo: client.logoKey,
+            })
+            .from(clientRequest)
+            .innerJoin(client, eq(client.id, clientRequest.clientId))
+            .where(
+              requestNumber !== null
+                ? or(eq(clientRequest.number, requestNumber), hasAllWords([clientRequest.title, client.name], words))
+                : hasAllWords([clientRequest.title, client.name], words),
+            )
+            // O número exato primeiro; depois as em aberto; depois as mais novas.
+            .orderBy(
+              ...(requestNumber !== null ? [desc(sql`${clientRequest.number} = ${requestNumber}`)] : []),
+              sql`${clientRequest.status} in (${sql.join(
+                CLOSED_REQUEST_STATUSES.map((status) => sql`${status}`),
+                sql`, `,
+              )})`,
+              desc(clientRequest.number),
+            )
+            .limit(LIMITS.request + 1),
+      !viewer.isAdmin
+        ? none
+        : database
+            .select({
+              id: clientRequestMessage.id,
+              body: clientRequestMessage.body,
+              authorName: clientRequestMessage.authorName,
+              authorImage: sql<string | null>`coalesce(${user.image}, ${portalUser.image})`,
+              createdAt: clientRequestMessage.createdAt,
+              request: { number: clientRequest.number, title: clientRequest.title },
+            })
+            .from(clientRequestMessage)
+            .innerJoin(clientRequest, eq(clientRequest.id, clientRequestMessage.requestId))
+            .leftJoin(user, eq(user.id, clientRequestMessage.authorId))
+            .leftJoin(portalUser, eq(portalUser.id, clientRequestMessage.authorPortalUserId))
+            .where(hasAllWords([clientRequestMessage.body], words))
+            .orderBy(desc(clientRequestMessage.createdAt))
+            .limit(MESSAGE_SCAN),
+      !viewer.isAdmin
+        ? none
+        : database
+            .select({
+              id: media.id,
+              key: media.key,
+              name: media.name,
+              createdAt: media.createdAt,
+              messageId: clientRequestMessage.id,
+              authorName: clientRequestMessage.authorName,
+              request: { number: clientRequest.number, title: clientRequest.title },
+            })
+            .from(clientRequestMessageAttachment)
+            .innerJoin(media, eq(media.id, clientRequestMessageAttachment.mediaId))
+            .innerJoin(clientRequestMessage, eq(clientRequestMessage.id, clientRequestMessageAttachment.messageId))
+            .innerJoin(clientRequest, eq(clientRequest.id, clientRequestMessage.requestId))
+            .where(hasAllWords([media.name], words))
+            .orderBy(desc(media.createdAt))
+            .limit(LIMITS.file),
     ]);
 
   // Com quem é cada conversa (o "Conversa com Ana") e quem foi mencionado nas mensagens dos trabalhos.
@@ -280,6 +375,7 @@ export async function globalSearch(
   const conversationLabel = (conversationId: string) =>
     `Conversa com ${others.find((item) => item.conversationId === conversationId)?.name ?? "pessoa excluída"}`;
   const jobLabel = (item: { pit: number; name: string }) => `#${item.pit} ${item.name}`;
+  const requestLabel = (item: { number: number; title: string }) => `${requestCode(item.number)} ${item.title}`;
   const jobMessageText = (body: string) =>
     splitMentions(body)
       .map((part) => (part.type === "mention" ? `@${names.get(part.userId) ?? "alguém"}` : part.text))
@@ -298,6 +394,12 @@ export async function globalSearch(
       text: row.body,
       source: conversationLabel(row.conversationId),
       href: `/chat/${row.conversationId}#${messageElementId(row.id)}`,
+    })),
+    ...requestMessages.map((row) => ({
+      ...row,
+      text: row.body,
+      source: requestLabel(row.request),
+      href: `/solicitacoes/${row.request.number}#${messageElementId(row.id)}`,
     })),
   ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
@@ -351,6 +453,7 @@ export async function globalSearch(
   const files: SearchResult[] = [
     ...jobFiles.map((row) => ({ ...row, source: jobLabel(row.job) })),
     ...chatFiles.map((row) => ({ ...row, source: conversationLabel(row.conversationId) })),
+    ...requestFiles.map((row) => ({ ...row, source: requestLabel(row.request) })),
   ]
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .slice(0, LIMITS.file)
@@ -391,6 +494,27 @@ export async function globalSearch(
           ? {
               label: "Ver todos os trabalhos encontrados",
               href: `${viewer.isAdmin ? "/trabalhos" : "/minha-planilha"}?${new URLSearchParams({ busca: query.trim(), situacao: "todos" })}`,
+            }
+          : undefined,
+    },
+    {
+      kind: "request",
+      label: GROUP_LABELS.request,
+      results: requests.slice(0, LIMITS.request).map((row) => ({
+        key: `request:${row.id}`,
+        kind: "request",
+        title: requestLabel(row),
+        subtitle: row.clientName,
+        href: `/solicitacoes/${row.number}`,
+        requestStatus: row.status,
+        imageUrl: options.mediaUrl(row.clientLogo),
+        imageName: row.clientName,
+      })),
+      more:
+        requests.length > LIMITS.request
+          ? {
+              label: "Ver todas as solicitações encontradas",
+              href: `/solicitacoes?${new URLSearchParams({ busca: query.trim(), situacao: "todas" })}`,
             }
           : undefined,
     },

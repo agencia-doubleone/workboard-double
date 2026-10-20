@@ -20,5 +20,5 @@ export async function POST(request: Request) {
     );
   }
 
-  return Response.json(createUploadTicket({ ...parsed.data, userId: session.user.id }));
+  return Response.json(createUploadTicket({ ...parsed.data, uploader: session.user }));
 }

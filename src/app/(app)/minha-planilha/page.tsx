@@ -13,6 +13,7 @@ import { requireSession } from "@/lib/session";
 import { listClientOptions, listJobs, listJobStatuses, listTeamMembers } from "@/server/jobs";
 import { resolveMediaUrl } from "@/server/media";
 import { JobsPagination, JobsToolbar } from "../trabalhos/jobs-toolbar";
+import { RememberJobList } from "../trabalhos/job-list-memory";
 import { JobsTable } from "../trabalhos/jobs-table";
 import { jobListHref, parseJobListParams } from "../trabalhos/params";
 import { toJobRow, toPersonView, toStatusOption } from "../trabalhos/present";
@@ -102,6 +103,7 @@ async function SheetContent({ searchParams }: { searchParams: PageProps<"/minha-
       {isAdmin && (
         <PeopleTabs people={team.map(toPersonView)} selectedId={ownerId} viewerId={user.id} params={params} />
       )}
+      <RememberJobList href={jobListHref(params, "/minha-planilha")} label="Minha planilha" />
       <div className="flex flex-col gap-3">
         <JobsToolbar
           path="/minha-planilha"
@@ -126,6 +128,7 @@ async function SheetContent({ searchParams }: { searchParams: PageProps<"/minha-
           </>
         ) : (
           <JobsTable
+            returnTo={jobListHref(params, "/minha-planilha")}
             rows={rows}
             statuses={statusOptions}
             isAdmin={isAdmin}

@@ -1,6 +1,16 @@
 // Planejamentos de redes sociais: status, redes e tipos de post, compartilhados
 // entre servidor e navegador (sem banco).
 
+import { monthOf, shiftMonth, type MonthKey } from "@/lib/calendar";
+
+/**
+ * O mês que os planejamentos abrem sem `?mes=`: o seguinte ao de hoje, porque a
+ * equipe trabalha no conteúdo do mês que vem. `today`: "AAAA-MM-DD" em Brasília.
+ */
+export function defaultPlanningMonth(today: string): MonthKey {
+  return shiftMonth(monthOf(today), 1);
+}
+
 /** O mesmo fluxo vale para o mês e para cada post (os dois andam de forma independente). */
 export const PLANNING_STATUSES = {
   producao: { label: "Em produção", badge: "outline" },

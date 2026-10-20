@@ -18,11 +18,15 @@ type UploadOptions = {
   /** Fração enviada, de 0 a 1. */
   onProgress?: (progress: number) => void;
   signal?: AbortSignal;
+  /** "portal": envio de um contato do portal do cliente (rotas /api/portal-media, pasta "portal"). */
+  via?: "team" | "portal";
 };
+
+const UPLOAD_ROUTES = { team: "/api/media", portal: "/api/portal-media" } as const;
 
 export async function uploadMedia(
   file: File,
-  { folder = "geral", onProgress, signal }: UploadOptions = {},
+  { folder = "geral", onProgress, signal, via = "team" }: UploadOptions = {},
 ): Promise<MediaItem> {
   signal?.throwIfAborted();
   const request = signMediaSchema.safeParse({ name: file.name, size: file.size, folder });
@@ -30,9 +34,10 @@ export async function uploadMedia(
     throw new MediaUploadError(request.error.issues[0]?.message ?? "Arquivo inválido.");
   }
 
-  const ticket = await postJson<MediaUploadTicket>("/api/media/sign", request.data, signal);
+  const routes = UPLOAD_ROUTES[via];
+  const ticket = await postJson<MediaUploadTicket>(`${routes}/sign`, request.data, signal);
   const receipt = await sendToCdn(ticket, file, onProgress, signal);
-  return postJson<MediaItem>("/api/media/complete", { receipt }, signal);
+  return postJson<MediaItem>(`${routes}/complete`, { receipt }, signal);
 }
 
 type ErrorBody = { error?: unknown };

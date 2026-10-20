@@ -5,6 +5,7 @@ import { Suspense } from "react";
 
 import { AchievementBadge } from "@/components/achievements/achievement-badge";
 import { Hint } from "@/components/hint";
+import { ProfileSection } from "@/components/profile/profile-section";
 import { ResetOnNavigation } from "@/components/reset-on-navigation";
 import { PageHeader } from "@/components/shell/page-header";
 import { buttonVariants } from "@/components/ui/button";
@@ -59,11 +60,7 @@ const RECENT_ACHIEVEMENTS = 8;
 /** As últimas conquistas, no mesmo formato das seções do formulário. */
 function AchievementsSection({ total, recent }: Awaited<ReturnType<typeof listRecentAchievements>>) {
   return (
-    <section className="grid gap-4 lg:grid-cols-[minmax(0,16rem)_minmax(0,1fr)] lg:gap-12 2xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-sm font-semibold">Conquistas</h2>
-        <p className="text-sm text-muted-foreground">As últimas que você desbloqueou usando o Workboard.</p>
-      </div>
+    <ProfileSection title="Conquistas" description="As últimas que você desbloqueou usando o Workboard.">
       <div className="flex flex-col gap-4 rounded-xl border bg-card p-5 shadow-raised sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 flex-col gap-3">
           <p className="text-sm">
@@ -95,6 +92,6 @@ function AchievementsSection({ total, recent }: Awaited<ReturnType<typeof listRe
           <ArrowRightIcon data-icon="inline-end" />
         </Link>
       </div>
-    </section>
+    </ProfileSection>
   );
 }

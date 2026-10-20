@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircleIcon, Loader2Icon } from "lucide-react";
+import { AlertCircleIcon, ArrowRightIcon, Loader2Icon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
@@ -141,6 +141,17 @@ export function LoginForm({ canResetPassword }: { canResetPassword: boolean }) {
           Esqueceu a senha? Peça um novo link a um administrador.
         </p>
       )}
+      {/* Clientes não têm conta aqui: entram pelo portal, com código no e-mail. */}
+      <Link
+        href="/portal/entrar"
+        className="group flex items-center justify-between gap-3 rounded-lg border bg-background/40 px-4 py-3 text-sm outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/50"
+      >
+        <span className="flex flex-col gap-0.5">
+          <span className="font-medium">É cliente da Double One?</span>
+          <span className="text-xs text-muted-foreground">Acesse o portal do cliente</span>
+        </span>
+        <ArrowRightIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+      </Link>
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { job, jobAssignee, jobMessage, jobMessageAttachment, jobStatusHistory, user } from "@/db/schema";
 import type { AuditChanges } from "@/lib/audit";
+import { requestCode } from "@/lib/client-requests";
 import { extractMentions, isJobCompletion, positionBetween } from "@/lib/jobs";
 import { normalizeMessageBody, PINNED_MESSAGES_MAX, toReactionViews, type MessageUpdateResult } from "@/lib/messages";
 import { getSession } from "@/lib/session";
@@ -38,6 +39,7 @@ import {
   onReactionAdded,
 } from "@/server/achievements";
 import { getRequestMeta, recordAudit } from "@/server/audit";
+import { findClientRequestById } from "@/server/client-requests";
 import { findClientById } from "@/server/clients";
 import {
   canAccessJob,
@@ -149,12 +151,22 @@ export async function createJob(input: CreateJobInput): Promise<JobActionResult>
   if (!parsed.success) return invalid(parsed.error);
   const data = parsed.data;
 
-  const [targetClient, status, assigneeIds] = await Promise.all([
+  const [targetClient, status, assigneeIds, fromRequest] = await Promise.all([
     resolveClient(data.clientId),
     findJobStatusById(db, data.statusId),
     filterActiveUserIds(db, data.assigneeIds),
+    data.clientRequestId ? findClientRequestById(db, data.clientRequestId) : null,
   ]);
   if (!targetClient) return { ok: false, error: "Cliente inválido.", fieldErrors: { clientId: ["Escolha um cliente ativo."] } };
+  // Criado a partir de uma solicitação: ela ainda existe e é do mesmo cliente.
+  if (data.clientRequestId && !fromRequest) return { ok: false, error: "A solicitação não existe mais." };
+  if (fromRequest && fromRequest.client.id !== targetClient.id) {
+    return {
+      ok: false,
+      error: "Revise os campos destacados.",
+      fieldErrors: { clientId: ["O trabalho de uma solicitação é do mesmo cliente dela."] },
+    };
+  }
   if (!status) return { ok: false, error: "Status inválido.", fieldErrors: { statusId: ["Escolha o status."] } };
   if (status.isCanceled) {
     return { ok: false, error: "Revise os campos destacados.", fieldErrors: { statusId: ["Um trabalho novo não começa cancelado."] } };
@@ -174,6 +186,7 @@ export async function createJob(input: CreateJobInput): Promise<JobActionResult>
           dueDate: data.dueDate,
           active: data.active,
           briefing: sanitizeRichText(data.briefing),
+          clientRequestId: fromRequest?.request.id ?? null,
           createdById: ctx.actor.id,
         })
         .returning({ id: job.id, pit: job.pit, name: job.name }),
@@ -184,7 +197,12 @@ export async function createJob(input: CreateJobInput): Promise<JobActionResult>
       action: "job.created",
       actor: ctx.actor,
       entity: jobEntity(created),
-      metadata: { client: targetClient.name, status: status.name, assignees: assigneeIds.length },
+      metadata: {
+        client: targetClient.name,
+        status: status.name,
+        assignees: assigneeIds.length,
+        ...(fromRequest ? { request: requestCode(fromRequest.request.number) } : {}),
+      },
       ...ctx.meta,
     });
     notifyAssignments({ job: created, actor: ctx.actor, addedIds: assigneeIds, removedIds: [] });

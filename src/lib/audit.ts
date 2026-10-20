@@ -6,6 +6,8 @@ export const AUDIT_CATEGORIES = {
   auth: "Autenticação",
   users: "Usuários",
   clients: "Clientes",
+  portal: "Portal do cliente",
+  requests: "Solicitações",
   jobs: "Trabalhos",
   planning: "Planejamentos",
   whiteboards: "Quadros",
@@ -46,6 +48,30 @@ export const AUDIT_ACTIONS = {
   "client.credential_deleted": { label: "Acesso do cofre excluído", category: "clients", tone: "danger" },
   "client.credential_viewed": { label: "Senha do cofre revelada", category: "clients", tone: "warning" },
   "client.credential_copied": { label: "Senha do cofre copiada", category: "clients", tone: "warning" },
+  "portal_user.created": { label: "Acesso ao portal criado", category: "portal" },
+  "portal_user.updated": { label: "Acesso ao portal editado", category: "portal" },
+  "portal_user.invited": { label: "Convite do portal enviado", category: "portal" },
+  "portal_user.disabled": { label: "Acesso ao portal desativado", category: "portal", tone: "warning" },
+  "portal_user.enabled": { label: "Acesso ao portal reativado", category: "portal" },
+  "portal_user.deleted": { label: "Acesso ao portal excluído", category: "portal", tone: "danger" },
+  "portal.sign_in": { label: "Login no portal do cliente", category: "portal" },
+  "portal.profile_updated": { label: "Perfil do portal atualizado", category: "portal" },
+  "portal.photo_updated": { label: "Foto do portal atualizada", category: "portal" },
+  "portal.photo_removed": { label: "Foto do portal removida", category: "portal" },
+  "client_request.created": { label: "Solicitação aberta", category: "requests" },
+  "client_request.status_changed": { label: "Status da solicitação alterado", category: "requests" },
+  "client_request.updated": { label: "Solicitação editada", category: "requests" },
+  "client_request.canceled": { label: "Solicitação cancelada pelo cliente", category: "requests", tone: "warning" },
+  "client_request.message_deleted": { label: "Mensagem de solicitação excluída", category: "requests", tone: "warning" },
+  "client_request.deleted": { label: "Solicitação excluída", category: "requests", tone: "danger" },
+  "client_request.delivery_sent": { label: "Entrega enviada para aprovação", category: "requests" },
+  "client_request.delivery_withdrawn": { label: "Entrega retirada", category: "requests", tone: "warning" },
+  "client_request.delivery_answered": { label: "Entrega respondida pelo cliente", category: "requests" },
+  "client_request.delivery_files_removed": {
+    label: "Arquivos de rodadas anteriores excluídos",
+    category: "requests",
+    tone: "warning",
+  },
   "job.created": { label: "Trabalho cadastrado", category: "jobs" },
   "job.updated": { label: "Trabalho editado", category: "jobs" },
   "job.status_changed": { label: "Status do trabalho alterado", category: "jobs" },
@@ -83,6 +109,7 @@ export const AUDIT_ENTITY_TYPES = {
   planning: "Planejamento",
   whiteboard: "Quadro",
   media: "Arquivo",
+  client_request: "Solicitação",
 } as const;
 export type AuditEntityType = keyof typeof AUDIT_ENTITY_TYPES;
 
@@ -146,6 +173,8 @@ export const AUDIT_FIELD_LABELS: Record<string, string> = {
   access: "Acesso",
   job: "Trabalho",
   whiteboardMembers: "Pessoas",
+  expectedOn: "Previsão de entrega",
+  canApprove: "Pode aprovar entregas",
 };
 
 /** Formato padrão de alterações: { campo: { from, to } }. */

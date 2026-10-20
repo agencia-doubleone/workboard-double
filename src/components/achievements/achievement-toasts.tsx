@@ -1,6 +1,6 @@
 "use client";
 
-import { TrophyIcon } from "lucide-react";
+import { TrophyIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -77,39 +77,60 @@ export function showAchievementToasts(unlocked: UnlockedAchievement[]) {
 }
 
 const cardClass =
-  "flex w-[356px] max-w-[calc(100vw-2rem)] items-center gap-3 rounded-xl border bg-popover p-3 pr-4 text-popover-foreground shadow-overlay outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50";
+  "flex w-[356px] max-w-[calc(100vw-2rem)] items-center gap-3 rounded-xl border bg-popover p-3 pr-10 text-popover-foreground shadow-overlay outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50";
+
+/** O aviso inteiro leva às conquistas; o X no canto (fora do link) só fecha. */
+function ToastFrame({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="relative">
+      {children}
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Fechar aviso"
+        className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+      >
+        <XIcon className="size-3.5" />
+      </button>
+    </div>
+  );
+}
 
 function AchievementToast({ id, onClose }: { id: AchievementId; onClose: () => void }) {
   const definition = achievementOf(id);
   return (
-    <Link href={`/conquistas#${id}`} onClick={onClose} className={cardClass}>
-      <AchievementBadge id={id} size={52} />
-      <span className="grid min-w-0 gap-0.5">
-        <span className="text-xs text-muted-foreground">
-          Conquista desbloqueada ·{" "}
-          <span className={cn("font-medium", RARITY_TEXT[definition.rarity])}>
-            {ACHIEVEMENT_RARITIES[definition.rarity].label}
+    <ToastFrame onClose={onClose}>
+      <Link href={`/conquistas#${id}`} onClick={onClose} className={cardClass}>
+        <AchievementBadge id={id} size={52} />
+        <span className="grid min-w-0 gap-0.5">
+          <span className="text-xs text-muted-foreground">
+            Conquista desbloqueada ·{" "}
+            <span className={cn("font-medium", RARITY_TEXT[definition.rarity])}>
+              {ACHIEVEMENT_RARITIES[definition.rarity].label}
+            </span>
           </span>
+          <span className="truncate text-sm font-semibold">{definition.name}</span>
+          <span className="line-clamp-2 text-xs text-muted-foreground">{definition.description}</span>
         </span>
-        <span className="truncate text-sm font-semibold">{definition.name}</span>
-        <span className="line-clamp-2 text-xs text-muted-foreground">{definition.description}</span>
-      </span>
-    </Link>
+      </Link>
+    </ToastFrame>
   );
 }
 
 function MoreToast({ count, onClose }: { count: number; onClose: () => void }) {
   return (
-    <Link href="/conquistas" onClick={onClose} className={cardClass}>
-      <span className="flex size-[52px] shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary-ink">
-        <TrophyIcon className="size-6" />
-      </span>
-      <span className="grid min-w-0 gap-0.5">
-        <span className="text-sm font-semibold">
-          {count === 1 ? "Mais 1 conquista desbloqueada" : `Mais ${count} conquistas desbloqueadas`}
+    <ToastFrame onClose={onClose}>
+      <Link href="/conquistas" onClick={onClose} className={cardClass}>
+        <span className="flex size-[52px] shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary-ink">
+          <TrophyIcon className="size-6" />
         </span>
-        <span className="text-xs text-muted-foreground">Ver todas as suas conquistas</span>
-      </span>
-    </Link>
+        <span className="grid min-w-0 gap-0.5">
+          <span className="text-sm font-semibold">
+            {count === 1 ? "Mais 1 conquista desbloqueada" : `Mais ${count} conquistas desbloqueadas`}
+          </span>
+          <span className="text-xs text-muted-foreground">Ver todas as suas conquistas</span>
+        </span>
+      </Link>
+    </ToastFrame>
   );
 }

@@ -5,7 +5,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { NavSection } from "@/components/shell/app-sidebar";
 import { UserMenu, UserMenuSkeleton } from "@/components/shell/user-menu";
 import { env } from "@/env";
-import { getFirstName, getGreeting, getHoliday, getHolidayGreeting, isBirthdayToday } from "@/lib/greeting";
+import { getFirstName, getGreeting, getHoliday, getHolidayGreeting, isBirthdayToday, specialDayNow } from "@/lib/greeting";
 import { getSession, requireSession } from "@/lib/session";
 import { resolveMediaUrl } from "@/server/media";
 
@@ -48,11 +48,7 @@ async function UserMenuLoader() {
   const { user } = await requireSession();
   const now = new Date();
   const firstName = getFirstName(user.name);
-  // Em desenvolvimento, GREETING_PREVIEW_DATE (.env.local) finge outra data para conferir as datas especiais.
-  const holidayNow =
-    process.env.NODE_ENV === "development" && env.GREETING_PREVIEW_DATE
-      ? new Date(`${env.GREETING_PREVIEW_DATE}T15:00:00Z`)
-      : now;
+  const holidayNow = specialDayNow(now, env.GREETING_PREVIEW_DATE);
   const holiday = getHoliday(holidayNow);
   return (
     <UserMenu

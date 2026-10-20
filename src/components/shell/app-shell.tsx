@@ -15,17 +15,45 @@ type AppShellProps = {
 /** Moldura do app: sidebar + painel de conteúdo com header. */
 export function AppShell({ adminNav, userMenu, search, children }: AppShellProps) {
   return (
+    <ShellFrame
+      sidebar={<AppSidebar adminNav={adminNav} />}
+      header={<AppHeader userMenu={userMenu} search={search} />}
+      services={
+        <>
+          {/* Websocket do tempo real: contadores, avisos e eventos para as telas. */}
+          <RealtimeConnection />
+          {/* Conquistas: avisos do que foi desbloqueado, checagem do dia e os segredos. */}
+          <AchievementTracker />
+        </>
+      }
+    >
+      {children}
+    </ShellFrame>
+  );
+}
+
+type ShellFrameProps = {
+  sidebar: React.ReactNode;
+  header: React.ReactNode;
+  /** Componentes sem tela que vivem enquanto o shell está montado (ex.: o tempo real). */
+  services?: React.ReactNode;
+  children: React.ReactNode;
+};
+
+/**
+ * O desenho do shell (sidebar ao lado do painel com header), sem nada da equipe:
+ * o AppShell e o portal do cliente (src/components/portal/portal-shell.tsx) montam em cima.
+ */
+export function ShellFrame({ sidebar, header, services, children }: ShellFrameProps) {
+  return (
     <ShellProvider>
-      {/* Websocket do tempo real: contadores, avisos e eventos para as telas. */}
-      <RealtimeConnection />
-      {/* Conquistas: avisos do que foi desbloqueado, checagem do dia e os segredos. */}
-      <AchievementTracker />
+      {services}
       {/* Ao imprimir (ex.: relatórios), só o conteúdo: sem menu, sem header, sem rolagem interna. */}
       <div className="flex h-svh overflow-hidden bg-sidebar text-sidebar-foreground print:block print:h-auto print:overflow-visible print:bg-background">
-        <AppSidebar adminNav={adminNav} />
+        {sidebar}
         <div className="flex min-w-0 flex-1 flex-col md:py-2 md:pr-2 print:block print:p-0!">
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground md:rounded-xl md:border md:shadow-xs print:block print:overflow-visible print:border-0! print:shadow-none!">
-            <AppHeader userMenu={userMenu} search={search} />
+            {header}
             {/* relative: elementos absolutos sem pai posicionado (ex.: rótulos sr-only)
                 ficam presos a esta área de rolagem, em vez de esticar a janela. */}
             <main className="relative flex-1 overflow-y-auto print:overflow-visible">

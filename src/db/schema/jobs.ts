@@ -14,6 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { user } from "./auth";
+import { clientRequest } from "./client-requests";
 import { client } from "./clients";
 import { media } from "./media";
 
@@ -66,6 +67,12 @@ export const job = pgTable(
     active: boolean("active").notNull().default(true),
     /** HTML do editor, já limpo no servidor (sanitizeRichText). */
     briefing: text("briefing"),
+    /**
+     * A solicitação do cliente de onde o trabalho saiu ("Criar trabalho" na página
+     * dela). O trabalho continua interno: o cliente não o vê. Excluir a
+     * solicitação só desfaz o vínculo.
+     */
+    clientRequestId: uuid("client_request_id").references(() => clientRequest.id, { onDelete: "set null" }),
     statusChangedAt: timestamp("status_changed_at", { withTimezone: true }).defaultNow().notNull(),
     createdById: text("created_by_id").references(() => user.id, { onDelete: "set null" }),
     /** "Lançamento". */
@@ -79,6 +86,7 @@ export const job = pgTable(
     index("job_status_idx").on(table.statusId),
     index("job_client_idx").on(table.clientId),
     index("job_created_at_idx").on(table.createdAt.desc()),
+    index("job_client_request_idx").on(table.clientRequestId),
   ],
 );
 

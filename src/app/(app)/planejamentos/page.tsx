@@ -13,7 +13,7 @@ import { UserAvatar } from "@/components/user-avatar";
 import { db } from "@/db";
 import { isMonthKey, monthOf } from "@/lib/calendar";
 import { todayInSaoPaulo } from "@/lib/jobs";
-import { PLANNING_STATUSES, PLANNING_STATUS_KEYS } from "@/lib/planning";
+import { defaultPlanningMonth, PLANNING_STATUSES, PLANNING_STATUS_KEYS } from "@/lib/planning";
 import { requireSession } from "@/lib/session";
 import { resolveMediaUrl } from "@/server/media";
 import { listPlanningsForMonth } from "@/server/planning";
@@ -36,11 +36,14 @@ export default function PlanejamentosPage({ searchParams }: PageProps<"/planejam
 
 async function PlanningList({ searchParams }: { searchParams: PageProps<"/planejamentos">["searchParams"] }) {
   await requireSession();
-  const current = monthOf(todayInSaoPaulo());
+  const today = todayInSaoPaulo();
+  const current = monthOf(today);
+  // Sem ?mes=, abre o mês que vem (o que a equipe está planejando).
+  const standard = defaultPlanningMonth(today);
   const requested = first((await searchParams).mes);
-  const month = isMonthKey(requested) ? requested : current;
+  const month = isMonthKey(requested) ? requested : standard;
   const rows = await listPlanningsForMonth(db, month);
-  const hrefFor = (target: string) => (target === current ? "/planejamentos" : `/planejamentos?mes=${target}`);
+  const hrefFor = (target: string) => (target === standard ? "/planejamentos" : `/planejamentos?mes=${target}`);
 
   const counts = Object.fromEntries(PLANNING_STATUS_KEYS.map((status) => [status, 0])) as Record<string, number>;
   let notStarted = 0;
@@ -116,7 +119,7 @@ async function PlanningList({ searchParams }: { searchParams: PageProps<"/planej
                   <TableRow key={row.id}>
                     <TableCell>
                       <Link
-                        href={`/planejamentos/${row.client.slug}${month === current ? "" : `?mes=${month}`}`}
+                        href={`/planejamentos/${row.client.slug}${month === standard ? "" : `?mes=${month}`}`}
                         className="flex max-w-64 items-center gap-2.5 font-medium outline-none hover:underline focus-visible:underline"
                       >
                         <ClientLogo name={row.client.name} logoUrl={resolveMediaUrl(row.client.logoKey)} className="size-7 text-[10px]" />

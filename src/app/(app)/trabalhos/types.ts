@@ -42,6 +42,8 @@ export type JobFormValues = {
   statusId: string;
   active: boolean;
   briefing: string;
+  /** Trabalho novo criado a partir de uma solicitação do cliente (o cliente fica travado no dela). */
+  fromRequest?: { id: string; code: string; title: string; href: string };
 };
 
 export type ClientOption = { id: string; name: string; logoUrl: string | null };

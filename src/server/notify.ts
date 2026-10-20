@@ -3,19 +3,29 @@ import "server-only";
 import { after } from "next/server";
 
 import { db } from "@/db";
+import { env } from "@/env";
+import { requestCode } from "@/lib/client-requests";
+import { isEmailConfigured, sendEmail } from "@/lib/email";
+import { deliveryForApprovalEmail } from "@/lib/email/templates";
 import { excerpt, notificationHref, notificationText, type NotificationStatus } from "@/lib/notifications";
+import { PORTAL_REQUESTS_PATH } from "@/lib/portal";
+import type { PortalNotificationData, PortalNotificationType } from "@/lib/portal-notifications";
 import { splitMentions } from "@/lib/jobs";
 import { messageEffectOf, messageEffectText } from "@/lib/messages";
 import type { PlanningStatus } from "@/lib/planning";
 import type { RealtimeNotificationEvent } from "@/lib/realtime/protocol";
 import { filterActiveUserIds, findUserNames, listMentionableIds } from "@/server/jobs";
+import { listActiveAdminIds } from "@/server/client-requests";
 import {
   insertNotifications,
   upsertJobMessageNotifications,
+  upsertRequestMessageNotifications,
   type NewNotification,
   type NotificationRecord,
 } from "@/server/notifications";
 import { listActiveMemberIds } from "@/server/planning";
+import { insertPortalNotifications, upsertPortalMessageNotifications } from "@/server/portal-notifications";
+import { listActivePortalContacts } from "@/server/request-deliveries";
 import { publishRealtime } from "@/server/realtime";
 
 // Notificações dos trabalhos: grava no banco e avisa em tempo real quem recebe.
@@ -41,7 +51,7 @@ function toEvent(row: NotificationRecord): RealtimeNotificationEvent {
     ...notificationText(row),
     href: notificationHref(row),
     jobId: row.jobId,
-    tag: `${row.type}:${row.jobId ?? row.planningId ?? row.whiteboardId ?? row.id}`,
+    tag: `${row.type}:${row.jobId ?? row.planningId ?? row.whiteboardId ?? row.clientRequestId ?? row.id}`,
   };
 }
 
@@ -233,5 +243,185 @@ export function notifyWhiteboardShared(input: { board: { id: string; title: stri
       })),
     );
     await deliver(rows);
+  });
+}
+
+// Solicitações do portal do cliente: quem recebe são os admins ativos (são eles
+// que veem /solicitacoes), nunca quem fez. O contato do cliente não é um `user`:
+// vem como ator sem id (o nome fica copiado).
+
+type RequestRef = { id: string; number: number; title: string; clientName: string };
+type RequestActor = { id: string | null; name: string };
+
+function requestData(request: RequestRef) {
+  return { requestNumber: request.number, requestTitle: request.title, clientName: request.clientName };
+}
+
+async function requestRecipients(actor: RequestActor) {
+  return (await listActiveAdminIds(db)).filter((id) => id !== actor.id);
+}
+
+/** Solicitação nova (aberta pelo cliente) ou cancelada por ele. */
+export function notifyRequestEvent(input: {
+  type: "request.created" | "request.canceled";
+  request: RequestRef;
+  actor: RequestActor;
+}) {
+  const { request, actor } = input;
+  later("solicitação", async () => {
+    const recipients = await requestRecipients(actor);
+    const rows = await insertNotifications(
+      db,
+      recipients.map((userId) => ({
+        userId,
+        type: input.type,
+        actorId: actor.id,
+        actorName: actor.name,
+        jobId: null,
+        clientRequestId: request.id,
+        data: requestData(request),
+      })),
+    );
+    await deliver(rows);
+  });
+}
+
+/** Mensagem nova na conversa da solicitação (do cliente ou de alguém da equipe). */
+export function notifyRequestMessage(input: { request: RequestRef; actor: RequestActor; body: string; attachmentCount: number }) {
+  const { request, actor } = input;
+  later("mensagem da solicitação", async () => {
+    const recipients = await requestRecipients(actor);
+    if (recipients.length === 0) return;
+    const files = input.attachmentCount;
+    const preview = excerpt(input.body) || (files === 1 ? "Enviou um arquivo." : files > 1 ? `Enviou ${files} arquivos.` : "");
+    const rows = await upsertRequestMessageNotifications(db, {
+      userIds: recipients,
+      actorId: actor.id,
+      actorName: actor.name,
+      clientRequestId: request.id,
+      data: { ...requestData(request), excerpt: preview },
+    });
+    await deliver(rows);
+  });
+}
+
+/** O cliente respondeu uma rodada para aprovação (admins, como as outras das solicitações). */
+export function notifyDeliveryAnswered(input: {
+  request: RequestRef;
+  actor: RequestActor;
+  round: number;
+  approved: number;
+  changes: number;
+}) {
+  const { request, actor } = input;
+  later("resposta da entrega", async () => {
+    const recipients = await requestRecipients(actor);
+    const rows = await insertNotifications(
+      db,
+      recipients.map((userId) => ({
+        userId,
+        type: "request.delivery_answered" as const,
+        actorId: actor.id,
+        actorName: actor.name,
+        jobId: null,
+        clientRequestId: request.id,
+        data: { ...requestData(request), round: input.round, approved: input.approved, changes: input.changes },
+      })),
+    );
+    await deliver(rows);
+  });
+}
+
+// Portal do cliente: o sino do portal (contatos ativos do cliente da
+// solicitação) e o e-mail de entrega para aprovar. Quem faz é sempre alguém da
+// equipe. O portal não tem tempo real: o sino reconta sozinho de tempos em tempos.
+
+type PortalRequestRef = { id: string; number: number; title: string; clientId: string; clientName: string };
+
+function portalData(request: PortalRequestRef): PortalNotificationData {
+  return { requestNumber: request.number, requestTitle: request.title };
+}
+
+/** Solicitação aberta pela equipe, status ou previsão de entrega mudados. */
+export function notifyPortalContacts(input: {
+  type: Exclude<PortalNotificationType, "request.message" | "request.delivery">;
+  request: PortalRequestRef;
+  actor: Actor;
+  data?: Partial<PortalNotificationData>;
+}) {
+  const { request, actor } = input;
+  later("portal", async () => {
+    const contacts = await listActivePortalContacts(db, request.clientId);
+    await insertPortalNotifications(
+      db,
+      contacts.map((contact) => ({
+        portalUserId: contact.id,
+        type: input.type,
+        clientRequestId: request.id,
+        actorId: actor.id,
+        actorName: actor.name,
+        data: { ...portalData(request), ...input.data },
+      })),
+    );
+  });
+}
+
+/** Mensagem da equipe na conversa: soma na notificação ainda não lida de cada contato. */
+export function notifyPortalMessage(input: { request: PortalRequestRef; actor: Actor; body: string; attachmentCount: number }) {
+  const { request, actor } = input;
+  later("mensagem no portal", async () => {
+    const contacts = await listActivePortalContacts(db, request.clientId);
+    const files = input.attachmentCount;
+    const preview = excerpt(input.body) || (files === 1 ? "Enviou um arquivo." : files > 1 ? `Enviou ${files} arquivos.` : "");
+    await upsertPortalMessageNotifications(db, {
+      portalUserIds: contacts.map((contact) => contact.id),
+      actorId: actor.id,
+      actorName: actor.name,
+      clientRequestId: request.id,
+      data: { ...portalData(request), excerpt: preview },
+    });
+  });
+}
+
+/**
+ * Rodada nova para aprovar: sino de todos os contatos ativos e e-mail para quem
+ * pode aprovar (sem SMTP configurado, só o sino). Um e-mail que falha não
+ * impede os outros.
+ */
+export function notifyPortalDelivery(input: { request: PortalRequestRef; actor: Actor; round: number; files: number }) {
+  const { request, actor } = input;
+  later("entrega no portal", async () => {
+    const contacts = await listActivePortalContacts(db, request.clientId);
+    await insertPortalNotifications(
+      db,
+      contacts.map((contact) => ({
+        portalUserId: contact.id,
+        type: "request.delivery" as const,
+        clientRequestId: request.id,
+        actorId: actor.id,
+        actorName: actor.name,
+        data: { ...portalData(request), round: input.round, files: input.files },
+      })),
+    );
+    if (!isEmailConfigured()) return;
+    const url = `${env.BETTER_AUTH_URL}${PORTAL_REQUESTS_PATH}/${request.number}#entregas`;
+    for (const contact of contacts.filter((item) => item.canApprove)) {
+      try {
+        await sendEmail(
+          deliveryForApprovalEmail({
+            to: contact.email,
+            name: contact.name,
+            clientName: request.clientName,
+            request: `${requestCode(request.number)} ${request.title}`,
+            round: input.round,
+            files: input.files,
+            sentBy: actor.name,
+            url,
+          }),
+        );
+      } catch (error) {
+        console.error("[email] falha no aviso de entrega", error);
+      }
+    }
   });
 }

@@ -2,6 +2,7 @@ import { ArrowLeftIcon } from "lucide-react";
 import Link from "next/link";
 
 import { ClientLogo } from "@/components/client-logo";
+import { Stat } from "@/components/dashboard";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableFrame, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCalendarDate, formatDate } from "@/lib/format";
@@ -20,7 +21,7 @@ import {
 } from "@/server/reports";
 import { ExportCsvButton } from "./export-csv";
 import { reportHref, type ReportParams } from "./params";
-import { dueCell, EmptyNote, ReportJobsTable, Section, Stat, StatGrid } from "./report-ui";
+import { dueCell, EmptyNote, ReportJobsTable, Section, StatGrid } from "./report-ui";
 
 type Props = { jobs: ReportJob[]; params: ReportParams; today: string };
 

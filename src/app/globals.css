@@ -35,6 +35,12 @@
   --color-success-ink: var(--success-ink);
   --color-warning: var(--warning);
   --color-warning-ink: var(--warning-ink);
+  --color-tone-blue: var(--tone-blue);
+  --color-tone-blue-ink: var(--tone-blue-ink);
+  --color-tone-teal: var(--tone-teal);
+  --color-tone-teal-ink: var(--tone-teal-ink);
+  --color-tone-violet: var(--tone-violet);
+  --color-tone-violet-ink: var(--tone-violet-ink);
   --color-rarity-common: var(--rarity-common);
   --color-rarity-rare: var(--rarity-rare);
   --color-rarity-epic: var(--rarity-epic);
@@ -108,6 +114,14 @@
   --success-ink: oklch(0.5 0.12 155);
   --warning: oklch(0.7 0.16 65);
   --warning-ink: oklch(0.52 0.12 60);
+  /* Tons dos status das solicitações (além de success/warning/destructive), fora
+     da cor de destaque: o texto (-ink) dá >= 4.5:1 sobre o selo (tom a 14%). */
+  --tone-blue: oklch(0.6 0.17 255);
+  --tone-blue-ink: oklch(0.5 0.17 258);
+  --tone-teal: oklch(0.62 0.11 195);
+  --tone-teal-ink: oklch(0.5 0.09 200);
+  --tone-violet: oklch(0.58 0.2 300);
+  --tone-violet-ink: oklch(0.5 0.2 300);
   /* Raridade das conquistas (rótulo e contorno do emoji): texto >= 4.5:1 sobre o fundo. */
   --rarity-common: oklch(0.52 0.02 260);
   --rarity-rare: oklch(0.52 0.18 255);
@@ -160,6 +174,12 @@
   --success-ink: var(--success);
   --warning: oklch(0.78 0.15 70);
   --warning-ink: var(--warning);
+  --tone-blue: oklch(0.72 0.14 250);
+  --tone-blue-ink: oklch(0.78 0.12 250);
+  --tone-teal: oklch(0.75 0.12 190);
+  --tone-teal-ink: oklch(0.8 0.12 190);
+  --tone-violet: oklch(0.72 0.16 300);
+  --tone-violet-ink: oklch(0.78 0.13 300);
   --rarity-common: oklch(0.74 0.02 260);
   --rarity-rare: oklch(0.74 0.13 255);
   --rarity-epic: oklch(0.74 0.15 300);

@@ -18,34 +18,6 @@ export function StatGrid({ children }: { children: React.ReactNode }) {
   return <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">{children}</div>;
 }
 
-export function Stat({
-  label,
-  value,
-  detail,
-  tone,
-}: {
-  label: string;
-  value: React.ReactNode;
-  detail?: React.ReactNode;
-  tone?: "good" | "bad";
-}) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1 rounded-xl border bg-card p-4 shadow-raised break-inside-avoid">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span
-        className={cn(
-          "text-2xl font-semibold tabular-nums",
-          tone === "good" && "text-success-ink",
-          tone === "bad" && "text-destructive-ink",
-        )}
-      >
-        {value}
-      </span>
-      {detail && <span className="truncate text-xs text-muted-foreground">{detail}</span>}
-    </div>
-  );
-}
-
 export function Section({
   title,
   description,

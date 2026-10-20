@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { UserAvatar } from "@/components/user-avatar";
 import { formatMonth } from "@/lib/calendar";
+import { deliveryAnswerSummary } from "@/lib/client-requests";
 import { PLANNING_STATUSES } from "@/lib/planning";
 import { cn } from "@/lib/utils";
 import { getNotifications, readNotifications } from "./actions";
@@ -244,6 +245,55 @@ export function NotificationRow({ item, onSelect }: { item: NotificationView; on
         </>
       );
       break;
+    case "request.created":
+    case "request.canceled":
+    case "request.delivery_answered":
+    case "request.message": {
+      const request = item.data.requestNumber ? (
+        <strong className="font-medium text-foreground">
+          S-{item.data.requestNumber} {item.data.requestTitle}
+        </strong>
+      ) : (
+        "uma solicitação"
+      );
+      const client = item.data.clientName && <> ({item.data.clientName})</>;
+      if (item.type === "request.message") {
+        text =
+          item.count > 1 ? (
+            <>
+              <strong className="font-medium text-foreground">{item.count} mensagens novas</strong> em {request}
+              {client}
+            </>
+          ) : (
+            <>
+              {who} escreveu em {request}
+              {client}
+            </>
+          );
+        detail = item.data.excerpt && (
+          <span className="line-clamp-2">
+            {item.count > 1 && `${actor}: `}
+            {item.data.excerpt}
+          </span>
+        );
+      } else if (item.type === "request.delivery_answered") {
+        text = (
+          <>
+            {who} respondeu a rodada {item.data.round} de {request}
+            {client}
+          </>
+        );
+        detail = deliveryAnswerSummary(item.data.approved ?? 0, item.data.changes ?? 0);
+      } else {
+        text = (
+          <>
+            {who} {item.type === "request.created" ? "abriu a solicitação" : "cancelou a solicitação"} {request}
+            {client}
+          </>
+        );
+      }
+      break;
+    }
   }
 
   return (

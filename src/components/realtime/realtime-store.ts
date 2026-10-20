@@ -12,7 +12,12 @@ import { getInboxCounts } from "@/components/notifications/actions";
 
 /** open: websocket conectado. off: tempo real não configurado (as telas recarregam de tempos em tempos). */
 export type RealtimeStatus = "connecting" | "open" | "closed" | "off";
-export type InboxCounts = { notifications: number; chats: number };
+export type InboxCounts = {
+  notifications: number;
+  chats: number;
+  /** Admins: solicitações com novidade (chegaram ou têm mensagem nova). */
+  requests: number;
+};
 
 type RealtimeState = {
   status: RealtimeStatus;

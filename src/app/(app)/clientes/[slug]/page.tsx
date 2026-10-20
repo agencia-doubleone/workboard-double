@@ -13,19 +13,24 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { db } from "@/db";
+import { env } from "@/env";
 import { CLIENT_LINKS, displayUrl, formatAgeRange, formatGenders, formatSocialClasses } from "@/lib/clients";
+import { isEmailConfigured } from "@/lib/email";
 import { formatDateTime, formatRelative } from "@/lib/format";
+import { PORTAL_SIGN_IN_PATH, portalContactStatus } from "@/lib/portal";
 import { requireSession } from "@/lib/session";
 import { listAuditLogs } from "@/server/audit/queries";
 import { findClientBySlug, listClientDates, listCredentials } from "@/server/clients";
 import { resolveMediaUrl } from "@/server/media";
+import { listPortalContacts } from "@/server/portal";
 import { isVaultConfigured } from "@/server/vault";
 import { presentAuditRow } from "../../auditoria/present";
 import { clientLinks } from "../present";
-import type { CredentialRow } from "../types";
+import type { CredentialRow, PortalContactRow } from "../types";
 import { ClientActions } from "./client-actions";
 import { ClientDatesCard } from "./client-dates-card";
 import { CredentialsSection } from "./credentials-section";
+import { PortalContactsSection } from "./portal-contacts-section";
 
 export const metadata: Metadata = { title: "Cliente" };
 
@@ -47,10 +52,12 @@ async function ClientContent({ params }: { params: PageProps<"/clientes/[slug]">
   // Arquivado some para a equipe; o admin ainda abre (para consultar ou reativar).
   if (!client || (client.archivedAt && !isAdmin)) notFound();
 
-  const [credentials, dates, history] = await Promise.all([
+  const [credentials, dates, history, portalContacts] = await Promise.all([
     listCredentials(db, client.id),
     listClientDates(db, client.id),
     isAdmin ? listAuditLogs(db, { entity: { type: "client", id: client.id } }) : null,
+    // Os acessos ao portal só aparecem para admins (quem cuida deles).
+    isAdmin ? listPortalContacts(db, client.id) : null,
   ]);
   const now = new Date();
   const links = clientLinks(client);
@@ -66,6 +73,18 @@ async function ClientContent({ params }: { params: PageProps<"/clientes/[slug]">
     hasNotes: item.hasNotes,
     updated: formatRelative(item.updatedAt, now),
   }));
+
+  const portalRows: PortalContactRow[] | null =
+    portalContacts?.map((contact) => ({
+      id: contact.id,
+      name: contact.name,
+      email: contact.email,
+      imageUrl: resolveMediaUrl(contact.image),
+      status: portalContactStatus(contact),
+      canApprove: contact.canApprove,
+      lastSignIn: contact.lastSignInAt ? formatRelative(contact.lastSignInAt, now) : null,
+      invited: contact.invitedAt ? formatRelative(contact.invitedAt, now) : null,
+    })) ?? null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -171,6 +190,18 @@ async function ClientContent({ params }: { params: PageProps<"/clientes/[slug]">
             vaultEnabled={isVaultConfigured()}
             archived={archived}
           />
+
+          {portalRows && (
+            <PortalContactsSection
+              clientId={client.id}
+              clientName={client.name}
+              contacts={portalRows}
+              canManage={!archived}
+              archived={archived}
+              emailEnabled={isEmailConfigured()}
+              portalUrl={`${env.BETTER_AUTH_URL}${PORTAL_SIGN_IN_PATH}`}
+            />
+          )}
         </div>
 
         <aside className="flex flex-col gap-6">
@@ -193,7 +224,7 @@ async function ClientContent({ params }: { params: PageProps<"/clientes/[slug]">
             <Card>
               <CardHeader>
                 <CardTitle>Histórico</CardTitle>
-                <CardDescription>Quem mexeu no cadastro e no cofre.</CardDescription>
+                <CardDescription>Quem mexeu no cadastro, no cofre e nos acessos ao portal.</CardDescription>
               </CardHeader>
               <CardContent>
                 {history.rows.length === 0 ? (

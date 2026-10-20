@@ -1,7 +1,21 @@
 import { desc, eq, isNotNull, like } from "drizzle-orm";
 
 import type { Database } from "@/db";
-import { chatMessageAttachment, client, job, jobMessage, jobMessageAttachment, media, user } from "@/db/schema";
+import {
+  chatMessageAttachment,
+  client,
+  clientRequest,
+  clientRequestDelivery,
+  clientRequestDeliveryFile,
+  clientRequestMessage,
+  clientRequestMessageAttachment,
+  job,
+  jobMessage,
+  jobMessageAttachment,
+  media,
+  portalUser,
+  user,
+} from "@/db/schema";
 import { listWhiteboardImages } from "@/server/whiteboards";
 
 // Biblioteca de arquivos (admins): todo arquivo registrado em `media` com os
@@ -10,18 +24,22 @@ import { listWhiteboardImages } from "@/server/whiteboards";
 // Sem "server-only": também roda nos scripts de verificação contra PGlite.
 //
 // Onde um arquivo pode estar (um lugar novo que guarde arquivo entra aqui):
-// - user.image e client.logoKey guardam a chave do CDN;
-// - anexos de mensagens (trabalhos e chat) apontam para media.id;
-// - textos ricos (job.briefing, client.notes) têm a URL com /uploads/<chave>;
+// - user.image, portal_user.image (foto do contato no portal) e client.logoKey guardam a chave do CDN;
+// - anexos de mensagens (trabalhos, chat e solicitações) apontam para media.id;
+// - textos ricos (job.briefing, client.notes, client_request.briefing) têm a URL com /uploads/<chave>;
 // - imagens dos quadros brancos guardam a chave em `fileId` (whiteboard_element.data).
 
 export type MediaUse =
   | { kind: "avatar"; userName: string }
+  | { kind: "portal-avatar"; contactName: string; clientName: string; clientSlug: string }
   | { kind: "logo"; clientName: string; clientSlug: string }
   | { kind: "client-notes"; clientName: string; clientSlug: string }
   | { kind: "job-attachment"; pit: number; jobName: string }
   | { kind: "job-briefing"; pit: number; jobName: string }
   | { kind: "chat" }
+  | { kind: "request-attachment"; number: number; title: string }
+  | { kind: "request-briefing"; number: number; title: string }
+  | { kind: "request-delivery"; number: number; title: string; round: number }
   /** Quadro pessoal é privado (nem admin abre): sem nome nem link. */
   | { kind: "whiteboard"; whiteboardId: string; title: string; private: boolean };
 
@@ -36,7 +54,7 @@ function keysInHtml(html: string | null) {
 }
 
 export async function listMediaLibrary(database: Database) {
-  const [files, avatars, logos, jobAttachments, chatAttachments, briefings, clientNotes, boardImages] = await Promise.all([
+  const [files, avatars, portalAvatars, logos, jobAttachments, chatAttachments, briefings, clientNotes, boardImages] = await Promise.all([
     database
       .select({
         id: media.id,
@@ -48,11 +66,18 @@ export async function listMediaLibrary(database: Database) {
         createdAt: media.createdAt,
         uploadedById: media.uploadedById,
         uploadedByName: user.name,
+        uploadedByPortalName: portalUser.name,
       })
       .from(media)
       .leftJoin(user, eq(user.id, media.uploadedById))
+      .leftJoin(portalUser, eq(portalUser.id, media.uploadedByPortalUserId))
       .orderBy(desc(media.createdAt)),
     database.select({ key: user.image, name: user.name }).from(user).where(isNotNull(user.image)),
+    database
+      .select({ key: portalUser.image, name: portalUser.name, clientName: client.name, clientSlug: client.slug })
+      .from(portalUser)
+      .innerJoin(client, eq(client.id, portalUser.clientId))
+      .where(isNotNull(portalUser.image)),
     database
       .select({ key: client.logoKey, name: client.name, slug: client.slug })
       .from(client)
@@ -73,17 +98,60 @@ export async function listMediaLibrary(database: Database) {
       .where(like(client.notes, "%/uploads/%")),
     listWhiteboardImages(database),
   ]);
+  const [requestAttachments, requestBriefings, deliveryFiles] = await Promise.all([
+    database
+      .selectDistinct({
+        mediaId: clientRequestMessageAttachment.mediaId,
+        number: clientRequest.number,
+        title: clientRequest.title,
+      })
+      .from(clientRequestMessageAttachment)
+      .innerJoin(clientRequestMessage, eq(clientRequestMessage.id, clientRequestMessageAttachment.messageId))
+      .innerJoin(clientRequest, eq(clientRequest.id, clientRequestMessage.requestId)),
+    database
+      .select({ number: clientRequest.number, title: clientRequest.title, html: clientRequest.briefing })
+      .from(clientRequest)
+      .where(like(clientRequest.briefing, "%/uploads/%")),
+    database
+      .select({
+        mediaId: clientRequestDeliveryFile.mediaId,
+        number: clientRequest.number,
+        title: clientRequest.title,
+        round: clientRequestDelivery.round,
+      })
+      .from(clientRequestDeliveryFile)
+      .innerJoin(clientRequestDelivery, eq(clientRequestDelivery.id, clientRequestDeliveryFile.deliveryId))
+      .innerJoin(clientRequest, eq(clientRequest.id, clientRequestDelivery.requestId))
+      .where(isNotNull(clientRequestDeliveryFile.mediaId)),
+  ]);
 
   const byKey = new Map<string, MediaUse[]>();
   const byId = new Map<string, MediaUse[]>();
   const add = (map: Map<string, MediaUse[]>, id: string, use: MediaUse) => map.set(id, [...(map.get(id) ?? []), use]);
 
   for (const row of avatars) if (row.key) add(byKey, row.key, { kind: "avatar", userName: row.name });
+  for (const row of portalAvatars) {
+    if (row.key) {
+      add(byKey, row.key, { kind: "portal-avatar", contactName: row.name, clientName: row.clientName, clientSlug: row.clientSlug });
+    }
+  }
   for (const row of logos) {
     if (row.key) add(byKey, row.key, { kind: "logo", clientName: row.name, clientSlug: row.slug });
   }
   for (const row of jobAttachments) add(byId, row.mediaId, { kind: "job-attachment", pit: row.pit, jobName: row.name });
   for (const row of chatAttachments) add(byId, row.mediaId, { kind: "chat" });
+  for (const row of requestAttachments) {
+    add(byId, row.mediaId, { kind: "request-attachment", number: row.number, title: row.title });
+  }
+  for (const row of deliveryFiles) {
+    if (!row.mediaId) continue;
+    add(byId, row.mediaId, { kind: "request-delivery", number: row.number, title: row.title, round: row.round });
+  }
+  for (const row of requestBriefings) {
+    for (const key of new Set(keysInHtml(row.html))) {
+      add(byKey, key, { kind: "request-briefing", number: row.number, title: row.title });
+    }
+  }
   for (const row of briefings) {
     for (const key of new Set(keysInHtml(row.html))) add(byKey, key, { kind: "job-briefing", pit: row.pit, jobName: row.name });
   }

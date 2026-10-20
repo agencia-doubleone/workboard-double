@@ -6,6 +6,7 @@ import {
   ExternalLinkIcon,
   FileIcon,
   FolderIcon,
+  InboxIcon,
   KeyRoundIcon,
   LinkIcon,
   Loader2Icon,
@@ -24,6 +25,7 @@ import { reportAchievement } from "@/components/achievements/achievement-toasts"
 import { ClientLogo } from "@/components/client-logo";
 import { Hint } from "@/components/hint";
 import { JobStatusBadge } from "@/components/job-status-badge";
+import { RequestStatusBadge } from "@/components/requests/request-status-badge";
 import { NAV_SECTIONS } from "@/components/shell/nav-config";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,6 +58,7 @@ function pagesFor(isAdmin: boolean): Page[] {
 }
 
 const KIND_ICONS: Partial<Record<SearchResult["kind"], LucideIcon>> = {
+  request: InboxIcon,
   file: FileIcon,
   link: LinkIcon,
   credential: KeyRoundIcon,
@@ -354,6 +357,7 @@ function ResultRow({
           className="hidden shrink-0 sm:inline-flex"
         />
       )}
+      {item.requestStatus && <RequestStatusBadge status={item.requestStatus} className="hidden shrink-0 sm:inline-flex" />}
       {item.badge && (
         <Badge variant="outline" className="shrink-0">
           {item.badge}
@@ -369,7 +373,13 @@ function ResultRow({
 }
 
 function ResultIcon({ item }: { item: Item }) {
-  if (item.kind === "job" || item.kind === "client" || item.kind === "planning" || item.kind === "credential") {
+  if (
+    item.kind === "job" ||
+    item.kind === "request" ||
+    item.kind === "client" ||
+    item.kind === "planning" ||
+    item.kind === "credential"
+  ) {
     if (item.imageName && !item.icon) {
       return <ClientLogo name={item.imageName} logoUrl={item.imageUrl ?? null} className="size-8 text-[10px]" />;
     }

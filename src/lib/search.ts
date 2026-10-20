@@ -1,6 +1,8 @@
 // Busca global (Ctrl+K): tipos dos resultados e o tratamento do texto buscado.
 // Compartilhado entre servidor e navegador (sem banco).
 
+import type { RequestStatus } from "@/lib/client-requests";
+
 /** Mínimo de letras para buscar (números, como o PIT, buscam com qualquer tamanho). */
 export const SEARCH_MIN_LENGTH = 2;
 export const SEARCH_MAX_LENGTH = 100;
@@ -10,6 +12,7 @@ const SEARCH_MAX_WORDS = 6;
 export type SearchKind =
   | "page"
   | "job"
+  | "request"
   | "client"
   | "message"
   | "file"
@@ -31,6 +34,8 @@ export type SearchResult = {
   copy?: string;
   /** Status do trabalho, com as cores do cadastro. */
   status?: { name: string; textColor: string; backgroundColor: string };
+  /** Status da solicitação (selo com as cores fixas dela). */
+  requestStatus?: RequestStatus;
   /** Selo curto: "Arquivado", "Inativo"... */
   badge?: string;
   /** Logo do cliente ou foto de quem escreveu. */

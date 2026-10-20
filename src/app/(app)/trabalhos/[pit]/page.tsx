@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, BanIcon, CircleOffIcon, ClockAlertIcon, FileTextIcon } from "lucide-react";
+import { BanIcon, CircleOffIcon, ClockAlertIcon, FileTextIcon, InboxIcon } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -6,15 +6,18 @@ import { Suspense } from "react";
 
 import { AchievementPing } from "@/components/achievements/achievement-ping";
 import { ClientLogo } from "@/components/client-logo";
+import { RequestStatusBadge } from "@/components/requests/request-status-badge";
 import { RichTextContent } from "@/components/rich-text-editor";
 import { PageSkeleton } from "@/components/shell/page-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { UserAvatar } from "@/components/user-avatar";
 import { db } from "@/db";
+import { requestCode, type RequestStatus } from "@/lib/client-requests";
 import { formatCalendarDate, formatDateTime } from "@/lib/format";
 import { extractMentions, isDoneStatus, isOverdue, todayInSaoPaulo } from "@/lib/jobs";
 import { requireSession } from "@/lib/session";
+import { findClientRequestById } from "@/server/client-requests";
 import {
   findJobByPit,
   findUserNames,
@@ -30,6 +33,7 @@ import { listMessageExtras, listPinnedMessages } from "@/server/messages";
 import { listJobWhiteboards } from "@/server/whiteboards";
 import { JobWhiteboards } from "../../quadros/job-whiteboards";
 import { toCardView, toPersonView as toBoardPersonView } from "../../quadros/present";
+import { JobBackLink } from "../job-list-memory";
 import { ActiveSwitch, StatusTimeline } from "../job-widgets";
 import { canSeeJob, parsePit, toMessageView, toPersonView, toPinnedMessageView, toStatusOption } from "../present";
 import { StatusSelect } from "../status-select";
@@ -55,7 +59,7 @@ async function JobContent({ params }: { params: PageProps<"/trabalhos/[pit]">["p
   if (!found || !canSeeJob(found, user)) notFound();
   const { job, client, status, assignees } = found;
 
-  const [statuses, history, messages, mentionableIds, lastReadAt, boards, team, pinned] = await Promise.all([
+  const [statuses, history, messages, mentionableIds, lastReadAt, boards, team, pinned, source] = await Promise.all([
     listJobStatuses(db),
     listJobStatusHistory(db, job.id),
     listJobMessages(db, job.id),
@@ -64,6 +68,7 @@ async function JobContent({ params }: { params: PageProps<"/trabalhos/[pit]">["p
     listJobWhiteboards(db, job.id, { id: user.id, isAdmin }),
     listTeamMembers(db),
     listPinnedMessages(db, "job", job.id),
+    job.clientRequestId ? findClientRequestById(db, job.clientRequestId) : null,
   ]);
   const extras = await listMessageExtras(db, "job", messages.map((message) => message.id), user.id);
   // Só dá para @mencionar os funcionários ativos do trabalho.
@@ -80,19 +85,14 @@ async function JobContent({ params }: { params: PageProps<"/trabalhos/[pit]">["p
   const yearAgo = new Date(now);
   yearAgo.setFullYear(yearAgo.getFullYear() - 1);
   const longFinished = isDoneStatus(status) && job.statusChangedAt <= yearAgo;
-  // A lista geral é só dos admins; a equipe volta para a própria planilha (cancelado: para o recorte deles).
+  // Sem lista lembrada nesta aba (JobBackLink), o voltar padrão: a lista geral é só dos admins; a equipe
+  // volta para a própria planilha (cancelado: para o recorte deles).
   const backHref = `${isAdmin ? "/trabalhos" : "/minha-planilha"}${status.isCanceled ? "?situacao=cancelados" : ""}`;
 
   return (
     <div className="flex flex-col gap-6">
       {longFinished && <AchievementPing event={{ type: "job.visit", jobId: job.id }} />}
-      <Link
-        href={backHref}
-        className="flex w-fit items-center gap-1.5 text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:underline"
-      >
-        <ArrowLeftIcon className="size-4" />
-        {isAdmin ? "Trabalhos" : "Minha planilha"}
-      </Link>
+      <JobBackLink fallback={{ href: backHref, label: isAdmin ? "Trabalhos" : "Minha planilha" }} isAdmin={isAdmin} />
 
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 flex-col gap-2">
@@ -226,6 +226,11 @@ async function JobContent({ params }: { params: PageProps<"/trabalhos/[pit]">["p
                     )}
                   </dd>
                 </div>
+                {source && (
+                  <DetailItem label="Solicitação">
+                    <SourceRequest request={source.request} linked={isAdmin} />
+                  </DetailItem>
+                )}
                 <DetailItem label="Lançamento">
                   <span className="text-right">
                     {formatDateTime(job.createdAt)}
@@ -263,6 +268,41 @@ async function JobContent({ params }: { params: PageProps<"/trabalhos/[pit]">["p
         </aside>
       </div>
     </div>
+  );
+}
+
+/**
+ * A solicitação do cliente de onde o trabalho saiu. A tela de solicitações é só
+ * dos admins: para o resto da equipe, só o número e o assunto.
+ */
+function SourceRequest({
+  request,
+  linked,
+}: {
+  request: { number: number; title: string; status: RequestStatus };
+  linked: boolean;
+}) {
+  const label = (
+    <>
+      <InboxIcon className="size-3.5 shrink-0 text-muted-foreground" />
+      <span className="shrink-0 font-medium tabular-nums">{requestCode(request.number)}</span>
+      <span className="truncate text-muted-foreground">{request.title}</span>
+    </>
+  );
+  return (
+    <span className="flex min-w-0 flex-col items-end gap-1">
+      {linked ? (
+        <Link
+          href={`/solicitacoes/${request.number}`}
+          className="flex max-w-full min-w-0 items-center gap-1.5 outline-none hover:underline focus-visible:underline"
+        >
+          {label}
+        </Link>
+      ) : (
+        <span className="flex max-w-full min-w-0 items-center gap-1.5">{label}</span>
+      )}
+      <RequestStatusBadge status={request.status} />
+    </span>
   );
 }
 

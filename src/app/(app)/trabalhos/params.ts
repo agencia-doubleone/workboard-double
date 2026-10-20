@@ -18,6 +18,15 @@ export const MY_JOBS = "eu";
 
 export type JobListPath = "/trabalhos" | "/minha-planilha";
 
+/**
+ * `?voltar=` do editar (vindo de uma lista): para onde ir ao salvar ou cancelar.
+ * Só as listas de trabalhos, com os filtros; qualquer outro valor é ignorado
+ * (nunca um endereço de fora).
+ */
+export function parseReturnTo(value: unknown) {
+  return typeof value === "string" && /^\/(?:trabalhos|minha-planilha)(?:\?[^#\s]*)?$/.test(value) ? value : null;
+}
+
 export type JobListParams = {
   busca?: string;
   situacao: JobSituation;

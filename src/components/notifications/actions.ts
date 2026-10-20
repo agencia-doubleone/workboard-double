@@ -8,6 +8,7 @@ import { NOTIFICATIONS_PAGE_SIZE, notificationHref } from "@/lib/notifications";
 import { getSession } from "@/lib/session";
 import { achievementsAfter, onNotificationsRead } from "@/server/achievements";
 import { countUnreadConversations } from "@/server/chat";
+import { countRequestsWithNews } from "@/server/client-requests";
 import { resolveMediaUrl } from "@/server/media";
 import {
   countUnreadNotifications,
@@ -36,15 +37,22 @@ function toNotificationView(item: NotificationItem, now: Date): NotificationView
   };
 }
 
-/** Não lidas do sino e conversas com mensagem nova (os números do header e da sidebar). */
+/**
+ * Não lidas do sino, conversas com mensagem nova e, para admins, solicitações
+ * com novidade (os números do header e da sidebar).
+ */
 export async function getInboxCounts() {
   const session = await getSession();
   if (!session) return null;
-  const [notifications, chats] = await Promise.all([
-    countUnreadNotifications(db, session.user.id),
-    countUnreadConversations(db, session.user.id),
+  const { user } = session;
+  const [notifications, chats, requests] = await Promise.all([
+    countUnreadNotifications(db, user.id),
+    countUnreadConversations(db, user.id),
+    user.role === "admin"
+      ? countRequestsWithNews(db, { kind: "team", userId: user.id, since: user.createdAt })
+      : Promise.resolve(0),
   ]);
-  return { notifications, chats };
+  return { notifications, chats, requests };
 }
 
 const listSchema = z.object({ before: z.iso.datetime().optional() });

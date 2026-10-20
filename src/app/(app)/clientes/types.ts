@@ -1,4 +1,5 @@
 import type { ClientLink, Gender, SocialClass } from "@/lib/clients";
+import type { PortalContactStatus } from "@/lib/portal";
 
 // Formas já serializáveis que as páginas de clientes entregam aos client components.
 
@@ -47,4 +48,20 @@ export type CredentialRow = {
   username: string | null;
   hasNotes: boolean;
   updated: string;
+};
+
+/** Um acesso ao portal do cliente, para o card da página do cliente (só admins). */
+export type PortalContactRow = {
+  id: string;
+  name: string;
+  email: string;
+  /** Foto que o contato pôs no portal (URL já resolvida), ou null. */
+  imageUrl: string | null;
+  status: PortalContactStatus;
+  /** Aprova ou pede alterações nas entregas (sem isso, só acompanha). */
+  canApprove: boolean;
+  /** "há 2 dias" ou null (nunca entrou). */
+  lastSignIn: string | null;
+  /** "há 3 horas" ou null (nenhum convite mandado). */
+  invited: string | null;
 };

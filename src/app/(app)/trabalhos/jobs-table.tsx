@@ -66,9 +66,11 @@ type JobsTableProps = {
   emptyMessage?: { title: string; description: string };
   /** Minha planilha: as linhas viram arrastáveis e reorganizam a planilha dessa pessoa. */
   sheetOwnerId?: string;
+  /** Endereço desta lista (com os filtros): o "Editar" da linha volta para cá ao salvar. */
+  returnTo?: string;
 };
 
-export function JobsTable({ rows, statuses, isAdmin, filtered, emptyMessage, sheetOwnerId }: JobsTableProps) {
+export function JobsTable({ rows, statuses, isAdmin, filtered, emptyMessage, sheetOwnerId, returnTo }: JobsTableProps) {
   const dndId = useId();
   const sensors = useSheetSensors();
   // Trabalho do dialog de excluir; o open separado mantém o texto durante a animação de saída.
@@ -118,6 +120,7 @@ export function JobsTable({ rows, statuses, isAdmin, filtered, emptyMessage, she
   const rowProps = {
     statuses,
     isAdmin,
+    returnTo,
     onToggleActive: toggleActive,
     onDelete: (row: JobRow) => {
       setDeleteTarget(row);
@@ -191,6 +194,7 @@ type JobTableRowProps = {
   row: JobRow;
   statuses: JobStatusOption[];
   isAdmin: boolean;
+  returnTo?: string;
   onToggleActive: (row: JobRow) => void;
   onDelete: (row: JobRow) => void;
   /** Linha arrastável: ref, posição durante o arraste e a alça na primeira coluna. */
@@ -232,7 +236,7 @@ function SortableJobRow(props: Omit<JobTableRowProps, "sortable">) {
   );
 }
 
-function JobTableRow({ row, statuses, isAdmin, onToggleActive, onDelete, sortable }: JobTableRowProps) {
+function JobTableRow({ row, statuses, isAdmin, returnTo, onToggleActive, onDelete, sortable }: JobTableRowProps) {
   const router = useRouter();
   const href = `/trabalhos/${row.pit}`;
 
@@ -322,7 +326,7 @@ function JobTableRow({ row, statuses, isAdmin, onToggleActive, onDelete, sortabl
               <ExternalLinkIcon />
               Abrir
             </DropdownMenuItem>
-            <DropdownMenuItem render={<Link href={`${href}/editar`} />}>
+            <DropdownMenuItem render={<Link href={`${href}/editar${returnTo ? `?voltar=${encodeURIComponent(returnTo)}` : ""}`} />}>
               <PencilIcon />
               Editar
             </DropdownMenuItem>

@@ -113,6 +113,55 @@
       "when": 1791944361951,
       "tag": "0015_planning_post_legacy_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1792210754107,
+      "tag": "0016_portal_users",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792212375789,
+      "tag": "0017_media_portal_uploader",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792214633194,
+      "tag": "0018_client_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792256777253,
+      "tag": "0019_client_request_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792260985187,
+      "tag": "0020_request_deliveries",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792450219164,
+      "tag": "0021_delivery_files_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1792451488443,
+      "tag": "0022_job_client_request",
+      "breakpoints": true
     }
   ]
 }

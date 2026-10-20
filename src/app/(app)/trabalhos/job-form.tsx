@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircleIcon, Loader2Icon } from "lucide-react";
+import { AlertCircleIcon, InboxIcon, Loader2Icon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -13,7 +13,7 @@ import { DatePicker } from "@/components/date-picker";
 import { JobStatusBadge } from "@/components/job-status-badge";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { SearchablePicker, type PickerOption } from "@/components/searchable-picker";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -47,11 +47,14 @@ type JobFormProps = {
   clients: ClientOption[];
   people: JobPersonView[];
   uploadsEnabled: boolean;
+  /** Editar vindo de uma lista: salvar e cancelar voltam para ela (senão, para a página do trabalho). */
+  returnTo?: string;
 };
 
-export function JobForm({ initial, statuses, clients, people, uploadsEnabled }: JobFormProps) {
+export function JobForm({ initial, statuses, clients, people, uploadsEnabled, returnTo }: JobFormProps) {
   const router = useRouter();
   const editing = Boolean(initial.jobId);
+  const fromRequest = editing ? undefined : initial.fromRequest;
   const [values, setValues] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -99,7 +102,7 @@ export function JobForm({ initial, statuses, clients, people, uploadsEnabled }: 
     startTransition(async () => {
       const result = editing
         ? await updateJob({ ...payload, jobId: initial.jobId! })
-        : await createJob(payload);
+        : await createJob({ ...payload, clientRequestId: fromRequest?.id });
       if (!result.ok) {
         setError(result.fieldErrors ? "Revise os campos destacados." : result.error);
         setFieldErrors(result.fieldErrors ?? {});
@@ -109,12 +112,27 @@ export function JobForm({ initial, statuses, clients, people, uploadsEnabled }: 
       // Editou e mudou para um status que encerra: trabalho concluído.
       const before = statuses.find((status) => status.id === initial.statusId);
       if (editing && isCompletion(before, selectedStatus)) celebrate();
-      router.push(`/trabalhos/${result.pit ?? initial.pit}`);
+      router.push(editing && returnTo ? returnTo : `/trabalhos/${result.pit ?? initial.pit}`);
     });
   }
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-8">
+      {fromRequest && (
+        <Alert>
+          <InboxIcon />
+          <AlertTitle>
+            Da solicitação{" "}
+            <Link href={fromRequest.href} className="underline-offset-4 hover:underline">
+              {fromRequest.code} {fromRequest.title}
+            </Link>
+          </AlertTitle>
+          <AlertDescription>
+            O nome, o briefing e a previsão de entrega vieram dela: ajuste o que precisar. O trabalho fica vinculado à
+            solicitação e funciona como qualquer outro; o cliente não o vê.
+          </AlertDescription>
+        </Alert>
+      )}
       {error && (
         <Alert variant="destructive">
           <AlertCircleIcon />
@@ -153,9 +171,13 @@ export function JobForm({ initial, statuses, clients, people, uploadsEnabled }: 
                     searchPlaceholder="Buscar cliente..."
                     emptyText="Nenhum cliente encontrado."
                     invalid={!!fieldErrors.clientId}
-                    disabled={isPending}
+                    disabled={isPending || Boolean(fromRequest)}
                   />
-                  <FieldError>{fieldErrors.clientId?.[0]}</FieldError>
+                  {fieldErrors.clientId ? (
+                    <FieldError>{fieldErrors.clientId[0]}</FieldError>
+                  ) : (
+                    fromRequest && <FieldDescription>O cliente da solicitação.</FieldDescription>
+                  )}
                 </Field>
                 <Field data-invalid={!!fieldErrors.dueDate}>
                   <FieldLabel htmlFor="job-due">Entrega</FieldLabel>
@@ -268,7 +290,7 @@ export function JobForm({ initial, statuses, clients, people, uploadsEnabled }: 
 
       <div className="flex justify-end gap-2 border-t pt-6">
         <Link
-          href={editing ? `/trabalhos/${initial.pit}` : "/trabalhos"}
+          href={editing ? (returnTo ?? `/trabalhos/${initial.pit}`) : (fromRequest?.href ?? "/trabalhos")}
           className={buttonVariants({ variant: "outline" })}
           aria-disabled={isPending}
         >

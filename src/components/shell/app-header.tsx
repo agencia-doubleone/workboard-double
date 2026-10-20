@@ -14,6 +14,25 @@ import { useShell } from "./shell-provider";
 
 /** Header do painel: recolher a sidebar, título da página, a busca, o sino e a conta (userMenu). */
 export function AppHeader({ userMenu, search }: { userMenu: React.ReactNode; search?: React.ReactNode }) {
+  return (
+    <ShellHeader
+      title={
+        // Em rotas com parâmetro (ex.: /clientes/[slug]) o caminho só existe na
+        // hora do request: sem o Suspense, o build não gera o shell estático.
+        <Suspense fallback="Workboard">
+          <HeaderTitle />
+        </Suspense>
+      }
+    >
+      {search}
+      <NotificationBell />
+      {userMenu}
+    </ShellHeader>
+  );
+}
+
+/** O header sem nada da equipe: botão da sidebar, título e, à direita, o que vier em children. */
+export function ShellHeader({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
   const { toggleSidebar } = useShell();
   const { sidebarCollapsed } = usePreferences();
   const modKey = useModKey();
@@ -33,18 +52,8 @@ export function AppHeader({ userMenu, search }: { userMenu: React.ReactNode; sea
         </Button>
       </Hint>
       <span aria-hidden="true" className="h-4 w-px bg-border" />
-      <h2 className="truncate px-1 text-sm font-medium">
-        {/* Em rotas com parâmetro (ex.: /clientes/[slug]) o caminho só existe na
-            hora do request: sem o Suspense, o build não gera o shell estático. */}
-        <Suspense fallback="Workboard">
-          <HeaderTitle />
-        </Suspense>
-      </h2>
-      <div className="ml-auto flex items-center gap-3 pr-1">
-        {search}
-        <NotificationBell />
-        {userMenu}
-      </div>
+      <h2 className="truncate px-1 text-sm font-medium">{title}</h2>
+      <div className="ml-auto flex items-center gap-3 pr-1">{children}</div>
     </header>
   );
 }

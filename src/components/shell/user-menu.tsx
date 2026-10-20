@@ -1,12 +1,9 @@
 "use client";
 
-import { CakeIcon, GhostIcon, LogOutIcon, SparklesIcon, TreePineIcon, UserRoundIcon, type LucideIcon } from "lucide-react";
+import { LogOutIcon, UserRoundIcon } from "lucide-react";
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 
-import { BirthdayBalloons } from "@/components/birthday-balloons";
-import { Hint } from "@/components/hint";
-import { HolidayEffect } from "@/components/holiday-effect";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { UserAvatar } from "@/components/user-avatar";
 import { authClient } from "@/lib/auth-client";
 import type { Holiday } from "@/lib/greeting";
+import { HeaderGreeting } from "./header-greeting";
 
 export type UserMenuUser = {
   name: string;
@@ -38,21 +36,9 @@ type UserMenuProps = {
   holiday: { id: Holiday; greeting: string } | null;
 };
 
-const HOLIDAY_LOOKS: Record<Holiday, { icon: LucideIcon; replay: string }> = {
-  halloween: { icon: GhostIcon, replay: "Soltar os morcegos de novo" },
-  christmas: { icon: TreePineIcon, replay: "Fazer nevar de novo" },
-  "new-year": { icon: SparklesIcon, replay: "Soltar os fogos de novo" },
-};
-
-const specialGreetingClass =
-  "hidden items-center gap-1.5 rounded-md px-1.5 py-1 text-sm font-medium text-primary-ink outline-none transition-colors hover:bg-primary-soft focus-visible:ring-2 focus-visible:ring-ring/50 sm:flex";
-
 /** Canto do header: saudação e a foto, que abre a conta (perfil e sair). */
 export function UserMenu({ user, firstName, greeting, isBirthday, holiday }: UserMenuProps) {
   const [isSigningOut, startSignOut] = useTransition();
-  // 0 = soltura automática (uma vez por dia); cada clique na saudação solta de novo.
-  const [launches, setLaunches] = useState(0);
-  const holidayLook = holiday ? HOLIDAY_LOOKS[holiday.id] : null;
 
   function handleSignOut() {
     startSignOut(async () => {
@@ -65,35 +51,17 @@ export function UserMenu({ user, firstName, greeting, isBirthday, holiday }: Use
 
   return (
     <div className="flex items-center gap-3">
-      {isBirthday ? (
-        <>
-          <Hint label="Soltar os balões de novo" side="bottom">
-            <button
-              type="button"
-              onClick={() => setLaunches((count) => count + 1)}
-              className={specialGreetingClass}
-            >
-              <CakeIcon className="size-4" />
-              Feliz aniversário, {firstName}!
-            </button>
-          </Hint>
-          <BirthdayBalloons key={launches} oncePerDay={launches === 0} />
-        </>
-      ) : holiday && holidayLook ? (
-        <>
-          <Hint label={holidayLook.replay} side="bottom">
-            <button type="button" onClick={() => setLaunches((count) => count + 1)} className={specialGreetingClass}>
-              <holidayLook.icon className="size-4" />
-              {holiday.greeting}
-            </button>
-          </Hint>
-          <HolidayEffect key={launches} holiday={holiday.id} oncePerDay={launches === 0} />
-        </>
-      ) : (
-        <p className="hidden text-sm text-muted-foreground sm:block">
-          {greeting}, <span className="font-medium text-foreground">{firstName}</span>
-        </p>
-      )}
+      <HeaderGreeting
+        firstName={firstName}
+        greeting={greeting}
+        special={
+          isBirthday
+            ? { kind: "birthday", text: `Feliz aniversário, ${firstName}!` }
+            : holiday
+              ? { kind: "holiday", holiday: holiday.id, text: holiday.greeting }
+              : null
+        }
+      />
       <span aria-hidden="true" className="hidden h-5 w-px bg-border sm:block" />
 
       <DropdownMenu>

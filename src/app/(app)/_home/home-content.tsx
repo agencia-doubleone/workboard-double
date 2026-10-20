@@ -11,9 +11,11 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+import { EmptyLine, HomeCard, Stat } from "@/components/dashboard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { db } from "@/db";
 import { birthdayOccurrences, formatDay, WEEKDAYS } from "@/lib/calendar";
+import { REQUEST_STATUSES, requestCode } from "@/lib/client-requests";
 import { dayKey, formatDate } from "@/lib/format";
 import { getFirstName, getGreeting, isBirthdayToday } from "@/lib/greeting";
 import { splitMentions, todayInSaoPaulo } from "@/lib/jobs";
@@ -24,19 +26,19 @@ import { requireSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { listBirthdays } from "@/server/calendar";
 import { listConversations } from "@/server/chat";
+import { listRequestsOverview } from "@/server/client-requests";
 import { listRecentActivity, listUnreadJobThreads } from "@/server/home";
 import { findUserNames, listTeamMembers } from "@/server/jobs";
 import { resolveMediaUrl } from "@/server/media";
 import { isOpen, isOverdueNow, loadReportJobs, stalledJobs, type ReportJob } from "@/server/reports";
 import { messagePreview } from "../chat/present";
-import { BarList, Stat } from "../relatorios/report-ui";
+import { BarList } from "../relatorios/report-ui";
 import { HomeRefresher } from "./home-refresher";
+import { RequestsSection } from "./requests-section";
 import {
   ActivityFeed,
   AgendaList,
   BirthdayList,
-  EmptyLine,
-  HomeCard,
   OverdueBadge,
   WaitingList,
   WeekStrip,
@@ -69,7 +71,7 @@ function weekStart(day: string) {
 }
 
 // "Meu dia": o que a pessoa precisa ver ao abrir o sistema. Admins ganham, no
-// fim, a visão da agência inteira.
+// fim, as solicitações dos clientes e a visão da agência inteira.
 export async function HomeContent() {
   const { user } = await requireSession();
   const isAdmin = user.role === "admin";
@@ -77,7 +79,7 @@ export async function HomeContent() {
   const today = todayInSaoPaulo(now);
   const weekEnd = addDays(today, WEEK_DAYS - 1);
 
-  const [jobs, threads, conversations, activity, birthdays, team] = await Promise.all([
+  const [jobs, threads, conversations, activity, birthdays, team, requests] = await Promise.all([
     // Admins: todos (a seção da agência usa); os demais, só os seus.
     loadReportJobs(db, isAdmin ? {} : { assigneeId: user.id }),
     listUnreadJobThreads(db, user.id),
@@ -85,6 +87,8 @@ export async function HomeContent() {
     listRecentActivity(db, user.id, new Date(now.getTime() - ACTIVITY_DAYS * 86_400_000)),
     listBirthdays(db),
     isAdmin ? listTeamMembers(db) : Promise.resolve([]),
+    // A tela de solicitações é só dos admins.
+    isAdmin ? listRequestsOverview(db, { kind: "team", userId: user.id, since: user.createdAt }) : Promise.resolve([]),
   ]);
   const mine = isAdmin ? jobs.filter((item) => item.assignees.some((person) => person.id === user.id)) : jobs;
   const open = mine.filter(isOpen);
@@ -131,6 +135,18 @@ export async function HomeContent() {
         count: thread.unread,
         mentioned: thread.mentioned,
       })),
+    // Mensagens não lidas nas solicitações (de quem escreveu por último; do cliente, com o nome dele).
+    ...requests
+      .filter((request) => request.unread > 0)
+      .map((request) => ({
+        kind: "request" as const,
+        key: `request:${request.id}`,
+        href: `/solicitacoes/${request.number}#mensagens`,
+        title: `${requestCode(request.number)} ${request.title}`,
+        preview: `${request.lastMessage.authorName ?? "Alguém"}${request.lastMessage.authorSide === "client" ? ` (${request.client.name})` : ""}: ${excerpt(request.lastMessage.body ?? "", 90) || "Enviou um arquivo"}`,
+        count: request.unread,
+        client: { name: request.client.name, logoUrl: resolveMediaUrl(request.client.logoKey) },
+      })),
     ...conversations
       .filter((conversation) => conversation.unread > 0)
       .map((conversation) => ({
@@ -175,8 +191,10 @@ export async function HomeContent() {
   const greeting = getGreeting(now);
   const birthday = isBirthdayToday(user.birthday, now);
   const GreetingIcon = birthday ? CakeIcon : (GREETING_ICONS[greeting] ?? SunIcon);
+  const newRequests = requests.filter((request) => request.isNew && !REQUEST_STATUSES[request.status].closed).length;
   const summaryParts = [
     dueToday.length > 0 && plural(dueToday.length, "entrega", "entregas"),
+    newRequests > 0 && plural(newRequests, "solicitação nova de cliente", "solicitações novas de clientes"),
     overdue.length > 0 && plural(overdue.length, "trabalho atrasado", "trabalhos atrasados"),
     waiting.length > 0 && plural(waiting.length, "conversa esperando resposta", "conversas esperando resposta"),
   ].filter((part): part is string => Boolean(part));
@@ -261,6 +279,7 @@ export async function HomeContent() {
         </HomeCard>
       </div>
 
+      {isAdmin && <RequestsSection rows={requests} today={today} />}
       {isAdmin && <AgencySection jobs={jobs} team={team} today={today} now={now} />}
     </div>
   );

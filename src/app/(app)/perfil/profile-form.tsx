@@ -1,12 +1,14 @@
 "use client";
 
-import { AlertCircleIcon, ImageUpIcon, Loader2Icon, Trash2Icon } from "lucide-react";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { AlertCircleIcon, Loader2Icon } from "lucide-react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { DatePicker } from "@/components/date-picker";
 import { PasswordField } from "@/components/password-field";
+import { ProfilePhotoCard } from "@/components/profile/profile-photo-card";
+import { ProfileSection } from "@/components/profile/profile-section";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
@@ -19,10 +21,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { UserAvatar } from "@/components/user-avatar";
-import { AVATAR_ACCEPT, prepareAvatar } from "@/lib/avatar-image";
-import { MediaUploadError, uploadMedia } from "@/lib/media-upload";
-import { cn } from "@/lib/utils";
+import { uploadMedia } from "@/lib/media-upload";
 import { changePasswordSchema, updateProfileSchema } from "@/lib/validations/profile";
 import {
   changePassword,
@@ -47,15 +46,15 @@ const SECTIONS = {
 export function ProfileForm({ user, uploadsEnabled }: { user: ProfileUser; uploadsEnabled: boolean }) {
   return (
     <div className="flex flex-col gap-8">
-      <Section {...SECTIONS.photo}>
+      <ProfileSection {...SECTIONS.photo}>
         <PhotoCard user={user} uploadsEnabled={uploadsEnabled} />
-      </Section>
-      <Section {...SECTIONS.details}>
+      </ProfileSection>
+      <ProfileSection {...SECTIONS.details}>
         <DetailsCard user={user} />
-      </Section>
-      <Section {...SECTIONS.password}>
+      </ProfileSection>
+      <ProfileSection {...SECTIONS.password}>
         <PasswordCard email={user.email} />
-      </Section>
+      </ProfileSection>
     </div>
   );
 }
@@ -64,36 +63,16 @@ export function ProfileForm({ user, uploadsEnabled }: { user: ProfileUser; uploa
 export function ProfileFormSkeleton() {
   return (
     <div className="flex flex-col gap-8" aria-busy="true">
-      <Section {...SECTIONS.photo}>
+      <ProfileSection {...SECTIONS.photo}>
         <Skeleton className="h-30 rounded-xl" />
-      </Section>
-      <Section {...SECTIONS.details}>
+      </ProfileSection>
+      <ProfileSection {...SECTIONS.details}>
         <Skeleton className="h-64 rounded-xl" />
-      </Section>
-      <Section {...SECTIONS.password}>
+      </ProfileSection>
+      <ProfileSection {...SECTIONS.password}>
         <Skeleton className="h-64 rounded-xl" />
-      </Section>
+      </ProfileSection>
     </div>
-  );
-}
-
-function Section({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="grid gap-4 lg:grid-cols-[minmax(0,16rem)_minmax(0,1fr)] lg:gap-12 2xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-sm font-semibold">{title}</h2>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </div>
-      {children}
-    </section>
   );
 }
 
@@ -142,127 +121,17 @@ function FormError({ message }: { message: string | null }) {
 }
 
 function PhotoCard({ user, uploadsEnabled }: { user: ProfileUser; uploadsEnabled: boolean }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [isPending, startTransition] = useTransition();
-  const [progress, setProgress] = useState<number | null>(null);
-  // Prévia local enquanto envia (e depois, até a página sair: é a mesma imagem).
-  const [preview, setPreview] = useState<string | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const busy = isPending || progress !== null;
-  const imageUrl = preview ?? user.imageUrl;
-
-  useEffect(() => () => {
-    if (preview) URL.revokeObjectURL(preview);
-  }, [preview]);
-
-  function handleFile(file: File | undefined) {
-    if (!file || busy || !uploadsEnabled) return;
-    startTransition(async () => {
-      try {
-        const photo = await prepareAvatar(file);
-        setPreview(URL.createObjectURL(photo));
-        setProgress(0);
-        const item = await uploadMedia(photo, { folder: "usuarios", onProgress: setProgress });
-        const result = await updateAvatar({ mediaId: item.id });
-        if (!result.ok) throw new MediaUploadError(result.error);
-        toast.success(result.message);
-      } catch (error) {
-        setPreview(null);
-        toast.error(error instanceof MediaUploadError ? error.message : "Não foi possível enviar a foto.");
-      } finally {
-        setProgress(null);
-      }
-    });
-  }
-
-  function handleRemove() {
-    startTransition(async () => {
-      const result = await removeAvatar();
-      if (result.ok) {
-        setPreview(null);
-        toast.success(result.message);
-      } else {
-        toast.error(result.error);
-      }
-    });
-  }
-
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-5 sm:flex-row sm:items-center">
-        <div
-          className={cn(
-            "relative w-fit shrink-0 rounded-2xl outline-offset-4 transition-[outline-color]",
-            dragging ? "outline-2 outline-dashed outline-ring" : "outline-2 outline-transparent",
-          )}
-          onDragOver={(event) => {
-            if (!uploadsEnabled || busy) return;
-            event.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(event) => {
-            event.preventDefault();
-            setDragging(false);
-            handleFile(event.dataTransfer.files[0]);
-          }}
-        >
-          <UserAvatar
-            name={user.name}
-            imageUrl={imageUrl}
-            alt={`Foto de ${user.name}`}
-            className="size-20 rounded-2xl"
-            fallbackClassName="text-xl"
-          />
-          {busy && (
-            <div className="absolute inset-0 grid place-items-center rounded-2xl bg-background/75 text-xs font-medium tabular-nums">
-              {progress !== null && progress < 1 ? (
-                `${Math.round(progress * 100)}%`
-              ) : (
-                <Loader2Icon className="size-5 animate-spin text-muted-foreground" />
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-2.5">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              onClick={() => inputRef.current?.click()}
-              disabled={!uploadsEnabled || busy}
-            >
-              <ImageUpIcon />
-              {user.imageUrl ? "Trocar foto" : "Enviar foto"}
-            </Button>
-            {user.imageUrl && (
-              <Button variant="destructive" onClick={handleRemove} disabled={busy}>
-                <Trash2Icon />
-                Remover
-              </Button>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {uploadsEnabled
-              ? "JPG, PNG ou WebP, até 20 MB. Recortada no centro, em quadrado. Também dá para arrastar a imagem até a foto."
-              : "O envio de fotos ainda não está configurado no servidor."}
-          </p>
-        </div>
-
-        <input
-          ref={inputRef}
-          type="file"
-          accept={AVATAR_ACCEPT}
-          className="sr-only"
-          tabIndex={-1}
-          aria-hidden="true"
-          onChange={(event) => {
-            handleFile(event.target.files?.[0]);
-            event.target.value = "";
-          }}
-        />
-      </CardContent>
-    </Card>
+    <ProfilePhotoCard
+      name={user.name}
+      imageUrl={user.imageUrl}
+      uploadsEnabled={uploadsEnabled}
+      onUpload={async (photo, onProgress) => {
+        const item = await uploadMedia(photo, { folder: "usuarios", onProgress });
+        return updateAvatar({ mediaId: item.id });
+      }}
+      onRemove={removeAvatar}
+    />
   );
 }
 

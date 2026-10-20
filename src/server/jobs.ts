@@ -191,6 +191,39 @@ export async function listAssignees(database: Database, jobIds: string[]) {
   return map;
 }
 
+/**
+ * Os trabalhos criados a partir de uma solicitação (o mais novo primeiro), para
+ * o card "Trabalhos" da página dela. Só admins veem solicitações.
+ */
+export async function listJobsOfRequest(database: Database, requestId: string) {
+  const rows = await database
+    .select({
+      id: job.id,
+      pit: job.pit,
+      name: job.name,
+      dueDate: job.dueDate,
+      active: job.active,
+      status: {
+        name: jobStatus.name,
+        textColor: jobStatus.textColor,
+        backgroundColor: jobStatus.backgroundColor,
+        isFinal: jobStatus.isFinal,
+        isCanceled: jobStatus.isCanceled,
+      },
+    })
+    .from(job)
+    .innerJoin(jobStatus, eq(jobStatus.id, job.statusId))
+    .where(eq(job.clientRequestId, requestId))
+    .orderBy(desc(job.pit));
+  const assignees = await listAssignees(
+    database,
+    rows.map((row) => row.id),
+  );
+  return rows.map((row) => ({ ...row, assignees: assignees.get(row.id) ?? [] }));
+}
+
+export type RequestJobItem = Awaited<ReturnType<typeof listJobsOfRequest>>[number];
+
 // Um trabalho
 
 export async function findJobByPit(database: Database, pit: number) {

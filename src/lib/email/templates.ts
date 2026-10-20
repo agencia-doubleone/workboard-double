@@ -223,3 +223,131 @@ export function passwordResetEmail({
     attachments: [logoAttachment()],
   };
 }
+
+/** Convite para o portal do cliente: o contato entra com o e-mail e um código, sem senha. */
+export function portalInviteEmail({
+  to,
+  name,
+  clientName,
+  url,
+  invitedBy,
+}: {
+  to: string;
+  name: string;
+  clientName: string;
+  /** Endereço da tela de entrada do portal. */
+  url: string;
+  /** Nome de quem da agência liberou o acesso. */
+  invitedBy: string;
+}): EmailMessage {
+  const firstName = firstNameOf(name);
+  const intro = `${invitedBy}, da Double One, liberou seu acesso ao portal do cliente da ${clientName}. Por lá você vai acompanhar seus pedidos e aprovar as entregas da agência.`;
+  const how = "Para entrar, informe este e-mail na tela do portal: enviamos um código na hora. Não existe senha para lembrar.";
+  const warning = "Se você não esperava este e-mail, pode ignorá-lo.";
+
+  return {
+    to,
+    subject: `Seu acesso ao portal da Double One · ${clientName}`,
+    text: [`Olá, ${firstName}.`, "", intro, "", how, "", `E-mail de acesso: ${to}`, `Entrar: ${url}`, "", warning].join("\n"),
+    html: layout({
+      preheader: "Você recebeu acesso ao portal do cliente da Double One.",
+      title: `Boas-vindas, ${firstName}!`,
+      body: [
+        paragraph(escapeHtml(intro)),
+        detailsBox([{ label: "E-mail de acesso", value: to }]),
+        button("Entrar no portal", url),
+        paragraph(escapeHtml(how), { size: 13 }),
+        paragraph(escapeHtml(warning), { size: 12, color: COLORS.faint }),
+      ].join("\n"),
+    }),
+    attachments: [logoAttachment()],
+  };
+}
+
+/** Código de entrada no portal do cliente. */
+export function portalCodeEmail({
+  to,
+  name,
+  code,
+  expiresInMinutes,
+}: {
+  to: string;
+  name: string;
+  code: string;
+  expiresInMinutes: number;
+}): EmailMessage {
+  const firstName = firstNameOf(name);
+  const intro = `Olá, ${firstName}. Use o código abaixo para entrar no portal do cliente da Double One.`;
+  const validity = `Ele vale por ${expiresInMinutes} minutos e só funciona uma vez.`;
+  const ignore = "Se não foi você que pediu, ignore este e-mail: ninguém entra sem o código.";
+
+  return {
+    to,
+    subject: `${code} é o seu código de acesso · Double One`,
+    text: [intro, "", `Código: ${code}`, "", validity, ignore].join("\n"),
+    html: layout({
+      preheader: `Seu código: ${code}`,
+      title: "Seu código de acesso",
+      body: [
+        paragraph(escapeHtml(intro)),
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${COLORS.box}" style="margin:8px 0 20px;background-color:${COLORS.box};border:1px solid ${COLORS.border};border-radius:8px;">
+  <tr>
+    <td align="center" style="padding:18px 20px;font-family:${MONO};font-size:30px;line-height:36px;font-weight:600;letter-spacing:8px;color:${COLORS.title};">${escapeHtml(code)}</td>
+  </tr>
+</table>`,
+        paragraph(escapeHtml(validity), { size: 13 }),
+        paragraph(escapeHtml(ignore), { size: 12, color: COLORS.faint }),
+      ].join("\n"),
+    }),
+    attachments: [logoAttachment()],
+  };
+}
+
+/** Rodada nova para aprovar no portal (vai para os contatos que podem aprovar). */
+export function deliveryForApprovalEmail({
+  to,
+  name,
+  clientName,
+  request,
+  round,
+  files,
+  sentBy,
+  url,
+}: {
+  to: string;
+  name: string;
+  clientName: string;
+  /** "S-12 Arte para a promoção". */
+  request: string;
+  round: number;
+  files: number;
+  /** Quem da agência mandou. */
+  sentBy: string;
+  /** Página da solicitação no portal, já na aba das entregas. */
+  url: string;
+}): EmailMessage {
+  const firstName = firstNameOf(name);
+  const count = files === 1 ? "1 arquivo" : `${files} arquivos`;
+  const intro = `${sentBy}, da Double One, mandou a rodada ${round} da solicitação ${request} para a ${clientName} aprovar: ${count}.`;
+  const how = "No portal, aprove cada arquivo ou peça alterações dizendo o que mudar. A equipe recebe a resposta assim que você enviar.";
+
+  return {
+    to,
+    subject: `Para aprovar: ${request} (rodada ${round}) · Double One`,
+    text: [`Olá, ${firstName}.`, "", intro, "", how, "", `Ver e responder: ${url}`].join("\n"),
+    html: layout({
+      preheader: `${count} esperando a sua aprovação.`,
+      title: "Entrega para aprovar",
+      body: [
+        paragraph(escapeHtml(`Olá, ${firstName}. ${intro}`)),
+        detailsBox([
+          { label: "Solicitação", value: request },
+          { label: "Rodada", value: `${round} · ${count}` },
+        ]),
+        button("Ver e responder", url),
+        paragraph(escapeHtml(how), { size: 13 }),
+      ].join("\n"),
+    }),
+    attachments: [logoAttachment()],
+  };
+}

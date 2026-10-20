@@ -11,21 +11,31 @@ import { requireSession } from "@/lib/session";
 import { findJobByPit, listClientOptions, listJobStatuses, listTeamMembers } from "@/server/jobs";
 import { isMediaConfigured, resolveMediaUrl } from "@/server/media";
 import { JobForm } from "../../job-form";
+import { parseReturnTo } from "../../params";
 import { canSeeJob, parsePit, toFormValues, toPersonView, toStatusOption } from "../../present";
 
 export const metadata: Metadata = { title: "Editar trabalho" };
 
-export default function EditarTrabalhoPage({ params }: PageProps<"/trabalhos/[pit]/editar">) {
+// `?voltar=` (o "Editar" das listas): ao salvar ou cancelar, volta para a lista
+// com os filtros; sem ele, para a página do trabalho.
+export default function EditarTrabalhoPage({ params, searchParams }: PageProps<"/trabalhos/[pit]/editar">) {
   return (
     <Suspense fallback={<PageSkeleton />}>
-      <EditJobContent params={params} />
+      <EditJobContent params={params} searchParams={searchParams} />
     </Suspense>
   );
 }
 
-async function EditJobContent({ params }: { params: PageProps<"/trabalhos/[pit]/editar">["params"] }) {
+async function EditJobContent({
+  params,
+  searchParams,
+}: {
+  params: PageProps<"/trabalhos/[pit]/editar">["params"];
+  searchParams: PageProps<"/trabalhos/[pit]/editar">["searchParams"];
+}) {
   const { user } = await requireSession();
   const pit = parsePit((await params).pit);
+  const returnTo = parseReturnTo((await searchParams).voltar);
   const found = pit ? await findJobByPit(db, pit) : null;
   // Quem não é admin só edita os trabalhos em que está vinculado.
   if (!found || !canSeeJob(found, user)) notFound();
@@ -53,6 +63,7 @@ async function EditJobContent({ params }: { params: PageProps<"/trabalhos/[pit]/
           clients={clients.map((item) => ({ id: item.id, name: item.name, logoUrl: resolveMediaUrl(item.logoKey) }))}
           people={people.map(toPersonView)}
           uploadsEnabled={isMediaConfigured()}
+          returnTo={returnTo ?? undefined}
         />
       </ResetOnNavigation>
     </div>

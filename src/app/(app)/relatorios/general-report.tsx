@@ -1,3 +1,4 @@
+import { Stat } from "@/components/dashboard";
 import { JobStatusBadge } from "@/components/job-status-badge";
 import { formatCalendarDate } from "@/lib/format";
 import { dayDiff, formatDays, formatRate } from "@/lib/reports";
@@ -12,7 +13,7 @@ import {
 } from "@/server/reports";
 import { ExportCsvButton } from "./export-csv";
 import { reportHref, type ReportParams } from "./params";
-import { BarList, countLabel, Section, shareLabel, Stat, StatGrid, TimelineChart } from "./report-ui";
+import { BarList, countLabel, Section, shareLabel, StatGrid, TimelineChart } from "./report-ui";
 
 const TOP = 6;
 

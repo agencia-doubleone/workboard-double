@@ -63,7 +63,7 @@ export const STORAGE_KEYS = {
  * <FixedTheme> do layout cobre a navegação no cliente, esta lista cobre a
  * primeira carga (o script abaixo roda antes da hidratação).
  */
-export const FIXED_THEME_PATHS = ["/login", "/esqueci-a-senha", "/redefinir-senha"];
+export const FIXED_THEME_PATHS = ["/login", "/esqueci-a-senha", "/redefinir-senha", "/portal/entrar"];
 
 export function isThemeMode(value: unknown): value is ThemeMode {
   return THEME_MODES.includes(value as ThemeMode);

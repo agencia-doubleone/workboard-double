@@ -8,6 +8,11 @@ export type AuditActor = {
   id: string;
   name?: string | null;
   email?: string | null;
+  /**
+   * Contato do portal do cliente: não é um `user` da equipe, então o id não vai
+   * para actor_id (que aponta para user); nome e e-mail ficam copiados no evento.
+   */
+  external?: boolean;
 };
 
 export type AuditEntry = {
@@ -27,7 +32,7 @@ export function createAuditRecorder(database: Database): RecordAudit {
     try {
       await database.insert(auditLog).values({
         action: entry.action,
-        actorId: entry.actor?.id ?? null,
+        actorId: entry.actor && !entry.actor.external ? entry.actor.id : null,
         actorName: entry.actor?.name ?? null,
         actorEmail: entry.actor?.email ?? null,
         entityType: entry.entity?.type ?? null,

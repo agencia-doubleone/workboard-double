@@ -1,0 +1,3 @@
+ALTER TABLE "media" ADD COLUMN "uploaded_by_portal_user_id" text;--> statement-breakpoint
+ALTER TABLE "media" ADD CONSTRAINT "media_uploaded_by_portal_user_id_portal_user_id_fk" FOREIGN KEY ("uploaded_by_portal_user_id") REFERENCES "public"."portal_user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "media_uploaded_by_portal_user_idx" ON "media" USING btree ("uploaded_by_portal_user_id");

@@ -10,7 +10,13 @@ import { Hint } from "@/components/hint";
 import { useRealtime } from "@/components/realtime/realtime-store";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { isActivePath, NAV_SECTIONS, type NavItem, type NavSectionId } from "./nav-config";
+import {
+  isActiveItem,
+  NAV_SECTIONS,
+  type NavItem,
+  type NavSection as NavSectionConfig,
+  type NavSectionId,
+} from "./nav-config";
 import { SettingsMenu } from "./settings-menu";
 import { useShell } from "./shell-provider";
 import {
@@ -25,6 +31,19 @@ type AppSidebarProps = {
 };
 
 export function AppSidebar(props: AppSidebarProps) {
+  return (
+    <ShellSidebar>
+      <SidebarBody {...props} />
+    </ShellSidebar>
+  );
+}
+
+/**
+ * A coluna da sidebar no desktop e a gaveta no celular, com o mesmo conteúdo
+ * (children aparece nas duas, cada uma com a sua superfície). Usada pelo
+ * Workboard e pelo portal do cliente.
+ */
+export function ShellSidebar({ children }: { children: React.ReactNode }) {
   const { mobileOpen, setMobileOpen } = useShell();
 
   return (
@@ -33,7 +52,7 @@ export function AppSidebar(props: AppSidebarProps) {
         data-slot="app-sidebar"
         className="hidden h-svh w-(--sidebar-width) shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-(--ease-snappy) motion-reduce:transition-none md:flex sidebar-collapsed:w-(--sidebar-width-icon) print:hidden!"
       >
-        <SidebarBody {...props} />
+        {children}
       </aside>
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
@@ -46,7 +65,7 @@ export function AppSidebar(props: AppSidebarProps) {
           <SidebarSurfaceContext
             value={{ surface: "mobile", onNavigate: () => setMobileOpen(false) }}
           >
-            <SidebarBody {...props} />
+            {children}
           </SidebarSurfaceContext>
         </SheetContent>
       </Sheet>
@@ -58,12 +77,10 @@ export function AppSidebar(props: AppSidebarProps) {
 const LOGO_CLICK_GAP_MS = 800;
 
 function SidebarBody({ adminNav }: AppSidebarProps) {
-  const { onNavigate } = useSidebarSurface();
   const logoClicks = useRef({ count: 0, last: 0 });
 
   // Segredo: 10 cliques seguidos no logo ("O Que Você Tá Procurando?").
   function handleLogoClick(event: React.MouseEvent) {
-    onNavigate?.();
     const { count, last } = logoClicks.current;
     const streak = event.timeStamp - last < LOGO_CLICK_GAP_MS ? count + 1 : 1;
     logoClicks.current = { count: streak, last: event.timeStamp };
@@ -72,46 +89,82 @@ function SidebarBody({ adminNav }: AppSidebarProps) {
 
   return (
     <>
-      <div className="flex h-12 shrink-0 items-center px-3 md:mt-2">
-        <Link
-          href="/"
-          onClick={handleLogoClick}
-          className="flex min-w-0 items-center gap-2.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/50"
-        >
-          {/* Caixa de 32 px: com a sidebar recolhida, o logo fica alinhado aos ícones. */}
-          <span className="flex size-8 shrink-0 items-center justify-center">
-            <DoubleOneLogo className="h-7 text-sidebar-foreground" />
-          </span>
-          <span className={cn("truncate text-sm font-semibold tracking-tight", sidebarFadeClass)}>
-            Workboard
-          </span>
-        </Link>
-      </div>
+      <SidebarBrand href="/" label="Workboard" onClick={handleLogoClick} />
 
-      <nav
-        aria-label="Principal"
-        className="flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto px-3 py-3"
-      >
+      <SidebarNav>
         <NavSection id="main" />
         {adminNav}
-      </nav>
+      </SidebarNav>
 
-      <div className="shrink-0 px-3 pt-2 pb-3">
+      <SidebarFooter>
         <SettingsMenu />
-      </div>
+      </SidebarFooter>
     </>
   );
 }
 
-export function NavSection({ id }: { id: NavSectionId }) {
-  const section = NAV_SECTIONS[id];
+/** Topo da sidebar: o logo da Double One e o nome da área, levando ao início dela. */
+export function SidebarBrand({
+  href,
+  label,
+  onClick,
+}: {
+  href: string;
+  label: string;
+  onClick?: (event: React.MouseEvent) => void;
+}) {
+  const { onNavigate } = useSidebarSurface();
 
   return (
+    <div className="flex h-12 shrink-0 items-center px-3 md:mt-2">
+      <Link
+        href={href}
+        onClick={(event) => {
+          onNavigate?.();
+          onClick?.(event);
+        }}
+        className="flex min-w-0 items-center gap-2.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/50"
+      >
+        {/* Caixa de 32 px: com a sidebar recolhida, o logo fica alinhado aos ícones. */}
+        <span className="flex size-8 shrink-0 items-center justify-center">
+          <DoubleOneLogo className="h-7 text-sidebar-foreground" />
+        </span>
+        <span className={cn("truncate text-sm font-semibold tracking-tight", sidebarFadeClass)}>
+          {label}
+        </span>
+      </Link>
+    </div>
+  );
+}
+
+export function SidebarNav({ children }: { children: React.ReactNode }) {
+  return (
+    <nav
+      aria-label="Principal"
+      className="flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto px-3 py-3"
+    >
+      {children}
+    </nav>
+  );
+}
+
+export function SidebarFooter({ children }: { children: React.ReactNode }) {
+  return <div className="shrink-0 px-3 pt-2 pb-3">{children}</div>;
+}
+
+export function NavSection({ id }: { id: NavSectionId }) {
+  const section: NavSectionConfig = NAV_SECTIONS[id];
+  return <NavGroup label={section.label} items={section.items} />;
+}
+
+/** Um grupo de links da sidebar, com rótulo opcional. */
+export function NavGroup({ label, items }: NavSectionConfig) {
+  return (
     <div className="flex flex-col gap-0.5">
-      {"label" in section && (
+      {label && (
         <div className="relative flex h-8 items-center px-2">
           <span className={cn("text-xs font-medium text-muted-foreground", sidebarFadeClass)}>
-            {section.label}
+            {label}
           </span>
           {/* Recolhida: o rótulo vira um divisor discreto. */}
           <span
@@ -121,7 +174,7 @@ export function NavSection({ id }: { id: NavSectionId }) {
         </div>
       )}
       <ul className="flex flex-col gap-0.5">
-        {section.items.map((item) => (
+        {items.map((item) => (
           <NavLink key={item.href} item={item} />
         ))}
       </ul>
@@ -143,7 +196,7 @@ function NavLink({ item }: { item: NavItem }) {
 
 function ActiveNavLink({ item }: { item: NavItem }) {
   const pathname = usePathname();
-  return <NavLinkAnchor item={item} active={isActivePath(pathname, item.href)} />;
+  return <NavLinkAnchor item={item} active={isActiveItem(pathname, item)} />;
 }
 
 /** Número de não lidas do item; com a sidebar recolhida, vira um ponto sobre o ícone. */
@@ -159,7 +212,7 @@ function NavBadge({ kind }: { kind: NonNullable<NavItem["badge"]> }) {
         )}
       >
         {value > 99 ? "99+" : value}
-        <span className="sr-only"> com mensagens novas</span>
+        <span className="sr-only">{kind === "requests" ? " com novidades" : " com mensagens novas"}</span>
       </span>
       <span
         aria-hidden="true"

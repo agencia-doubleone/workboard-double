@@ -4,6 +4,7 @@ import {
   ChartColumnIcon,
   HardDriveIcon,
   HouseIcon,
+  InboxIcon,
   MessagesSquareIcon,
   NotebookPenIcon,
   PresentationIcon,
@@ -21,7 +22,9 @@ export type NavItem = {
   href: string;
   icon: LucideIcon;
   /** Contador ao lado (vem do tempo real, src/components/realtime). */
-  badge?: "chats";
+  badge?: "chats" | "requests";
+  /** Ativo só no caminho exato (o início de uma área, ex.: /portal), não nas páginas abaixo dele. */
+  exact?: boolean;
 };
 
 export type NavSection = {
@@ -47,6 +50,8 @@ export const NAV_SECTIONS = {
     items: [
       // A lista geral é só dos admins; a equipe acompanha os trabalhos na Minha planilha.
       { title: "Trabalhos", href: "/trabalhos", icon: Table2Icon },
+      // Pedidos dos clientes pelo portal; o número é o que tem novidade para o admin.
+      { title: "Solicitações", href: "/solicitacoes", icon: InboxIcon, badge: "requests" },
       { title: "Relatórios", href: "/relatorios", icon: ChartColumnIcon },
       { title: "Usuários", href: "/usuarios", icon: UsersIcon },
       { title: "Status de trabalhos", href: "/status-de-trabalhos", icon: TagsIcon },
@@ -59,12 +64,16 @@ export const NAV_SECTIONS = {
 export type NavSectionId = keyof typeof NAV_SECTIONS;
 
 const ALL_ITEMS: NavItem[] = Object.values(NAV_SECTIONS).flatMap(
-  (section) => section.items,
+  (section): NavItem[] => section.items,
 );
 
 export function isActivePath(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+export function isActiveItem(pathname: string, item: Pick<NavItem, "href" | "exact">) {
+  return item.exact ? pathname === item.href : isActivePath(pathname, item.href);
 }
 
 /** Páginas fora da navegação lateral (acessadas pelo menu do usuário). */

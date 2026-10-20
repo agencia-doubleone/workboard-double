@@ -21,44 +21,7 @@ import { resolveMediaUrl } from "@/server/media";
 import type { ReportJob } from "@/server/reports";
 
 // Partes da tela de Início (componentes de servidor; os dados chegam prontos de home-content.tsx).
-
-export function HomeCard({
-  title,
-  action,
-  children,
-  className,
-}: {
-  title: string;
-  action?: { label: string; href: string };
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <section className={cn("flex min-w-0 flex-col gap-3 rounded-xl border bg-card p-4 shadow-raised", className)}>
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">{title}</h2>
-        {action && (
-          <Link
-            href={action.href}
-            className="text-xs font-medium text-muted-foreground outline-none hover:text-foreground hover:underline focus-visible:underline"
-          >
-            {action.label}
-          </Link>
-        )}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-export function EmptyLine({ icon: Icon, children }: { icon: LucideIcon; children: React.ReactNode }) {
-  return (
-    <p className="flex items-center gap-2 rounded-lg border border-dashed px-3 py-4 text-sm text-muted-foreground">
-      <Icon className="size-4 shrink-0" />
-      {children}
-    </p>
-  );
-}
+// Card, número e estado vazio ficam em @/components/dashboard (o portal usa também).
 
 export type WeekDay = { date: string; weekday: string; day: string; deliveries: number; birthdays: number; isToday: boolean };
 
@@ -144,6 +107,15 @@ export function AgendaList({ entries }: { entries: AgendaEntry[] }) {
 export type WaitingItem =
   | { kind: "job"; key: string; href: string; title: string; preview: string; count: number; mentioned: boolean }
   | {
+      kind: "request";
+      key: string;
+      href: string;
+      title: string;
+      preview: string;
+      count: number;
+      client: { name: string; logoUrl: string | null };
+    }
+  | {
       kind: "chat";
       key: string;
       href: string;
@@ -153,7 +125,7 @@ export type WaitingItem =
       count: number;
     };
 
-/** Menções, mensagens novas nos trabalhos e conversas do chat não lidas. */
+/** Menções, mensagens novas nos trabalhos e nas solicitações (admins) e conversas do chat não lidas. */
 export function WaitingList({ items }: { items: WaitingItem[] }) {
   return (
     <ul className="flex flex-col gap-1">
@@ -165,6 +137,8 @@ export function WaitingList({ items }: { items: WaitingItem[] }) {
           >
             {item.kind === "chat" ? (
               <UserAvatar name={item.title} imageUrl={item.imageUrl} className="size-8" />
+            ) : item.kind === "request" ? (
+              <ClientLogo name={item.client.name} logoUrl={item.client.logoUrl} className="size-8 text-[10px]" />
             ) : (
               <span
                 className={cn(

@@ -11,12 +11,13 @@ export type NotificationRecord = typeof notification.$inferSelect;
 
 export type NewNotification = {
   userId: string;
-  type: Exclude<NotificationType, "job.message">;
+  type: Exclude<NotificationType, "job.message" | "request.message">;
   actorId: string | null;
   actorName: string | null;
   jobId: string | null;
   planningId?: string | null;
   whiteboardId?: string | null;
+  clientRequestId?: string | null;
   data: NotificationData;
 };
 
@@ -52,6 +53,46 @@ export async function upsertJobMessageNotifications(
     .onConflictDoUpdate({
       target: [notification.userId, notification.jobId],
       targetWhere: sql`type = 'job.message' and read_at is null`,
+      set: {
+        count: sql`${notification.count} + 1`,
+        actorId: sql`excluded.actor_id`,
+        actorName: sql`excluded.actor_name`,
+        data: sql`excluded.data`,
+        updatedAt: sql`excluded.updated_at`,
+      },
+    })
+    .returning();
+}
+
+/**
+ * Mensagem numa solicitação: como upsertJobMessageNotifications, somando na
+ * notificação ainda não lida de cada pessoa. `actorId` é null quando quem
+ * escreveu é o contato do cliente (não é um `user`).
+ */
+export async function upsertRequestMessageNotifications(
+  database: Database,
+  input: { userIds: string[]; actorId: string | null; actorName: string; clientRequestId: string; data: NotificationData },
+) {
+  if (input.userIds.length === 0) return [];
+  const now = new Date();
+  return database
+    .insert(notification)
+    .values(
+      input.userIds.map((userId) => ({
+        userId,
+        type: "request.message" as const,
+        actorId: input.actorId,
+        actorName: input.actorName,
+        jobId: null,
+        clientRequestId: input.clientRequestId,
+        data: input.data,
+        createdAt: now,
+        updatedAt: now,
+      })),
+    )
+    .onConflictDoUpdate({
+      target: [notification.userId, notification.clientRequestId],
+      targetWhere: sql`type = 'request.message' and read_at is null`,
       set: {
         count: sql`${notification.count} + 1`,
         actorId: sql`excluded.actor_id`,
@@ -111,6 +152,18 @@ export async function markNotificationsRead(database: Database, userId: string, 
         isNull(notification.readAt),
         ids ? inArray(notification.id, ids) : undefined,
       ),
+    )
+    .returning({ id: notification.id });
+  return rows.length;
+}
+
+/** Abrir a solicitação dá como vistas todas as notificações dela. Devolve quantas mudaram. */
+export async function markRequestNotificationsRead(database: Database, userId: string, clientRequestId: string) {
+  const rows = await database
+    .update(notification)
+    .set({ readAt: new Date() })
+    .where(
+      and(eq(notification.userId, userId), eq(notification.clientRequestId, clientRequestId), isNull(notification.readAt)),
     )
     .returning({ id: notification.id });
   return rows.length;

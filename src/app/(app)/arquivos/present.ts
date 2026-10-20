@@ -14,6 +14,8 @@ function toUseView(use: MediaUse): FileUseView {
   switch (use.kind) {
     case "avatar":
       return { label: `Foto de perfil de ${use.userName}`, href: "/usuarios" };
+    case "portal-avatar":
+      return { label: `Foto de ${use.contactName} no portal (${use.clientName})`, href: `/clientes/${use.clientSlug}` };
     case "logo":
       return { label: `Logo de ${use.clientName}`, href: `/clientes/${use.clientSlug}` };
     case "client-notes":
@@ -24,6 +26,15 @@ function toUseView(use: MediaUse): FileUseView {
       return { label: `Briefing do #${use.pit} ${use.jobName}`, href: `/trabalhos/${use.pit}` };
     case "chat":
       return { label: "Mensagem do chat (privada)", href: null };
+    case "request-attachment":
+      return { label: `Anexo na S-${use.number} ${use.title}`, href: `/solicitacoes/${use.number}#mensagens` };
+    case "request-briefing":
+      return { label: `Briefing da S-${use.number} ${use.title}`, href: `/solicitacoes/${use.number}` };
+    case "request-delivery":
+      return {
+        label: `Rodada ${use.round} para aprovação da S-${use.number} ${use.title}`,
+        href: `/solicitacoes/${use.number}#entregas`,
+      };
     case "whiteboard":
       return use.private
         ? { label: "Quadro pessoal (privado)", href: null }
@@ -76,7 +87,7 @@ export function toFileView(item: MediaLibraryItem, ctx: { now: Date; missing: bo
     // Sumido do servidor: o link não abre e a miniatura não carrega.
     url: ctx.missing ? null : base.url,
     thumbUrl: ctx.missing ? null : base.thumbUrl,
-    uploadedBy: item.uploadedByName,
+    uploadedBy: item.uploadedByName ?? (item.uploadedByPortalName ? `${item.uploadedByPortalName} (portal do cliente)` : null),
     usage: mediaUsage(item, ctx.now),
     uses: item.uses.map(toUseView),
   };

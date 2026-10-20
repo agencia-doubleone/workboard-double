@@ -2,6 +2,7 @@
 // Compartilhado entre servidor e navegador (sem banco).
 
 import { formatMonth } from "@/lib/calendar";
+import { deliveryAnswerSummary } from "@/lib/client-requests";
 import { PLANNING_STATUSES, type PlanningStatus } from "@/lib/planning";
 
 export const NOTIFICATION_TYPES = [
@@ -14,6 +15,10 @@ export const NOTIFICATION_TYPES = [
   "planning.month_status",
   "planning.post_status",
   "whiteboard.shared",
+  "request.created",
+  "request.message",
+  "request.canceled",
+  "request.delivery_answered",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -40,6 +45,13 @@ export type NotificationData = {
   // Quadros brancos (whiteboard.*)
   boardId?: string;
   boardTitle?: string;
+  // Solicitações do portal do cliente (request.*), com clientName.
+  requestNumber?: number;
+  requestTitle?: string;
+  /** Entrega respondida pelo cliente (request.delivery_answered). */
+  round?: number;
+  approved?: number;
+  changes?: number;
 };
 
 /** Quantas aparecem no sino de uma vez (o resto vem em "Carregar mais"). */
@@ -111,12 +123,49 @@ export function notificationText(item: NotificationLike): { title: string; body:
         title: "Novo quadro para você",
         body: `${actor} incluiu você no quadro "${data.boardTitle ?? "sem nome"}".`,
       };
+    case "request.created":
+      return {
+        title: `Nova solicitação de ${data.clientName ?? "um cliente"}`,
+        body: `${actor} abriu ${requestLabel(data)}.`,
+      };
+    case "request.message": {
+      const code = data.requestNumber ? `S-${data.requestNumber}` : "uma solicitação";
+      return {
+        title: item.count > 1 ? `${item.count} mensagens novas em ${code}` : `${actor} em ${code}`,
+        body: data.excerpt ?? "",
+      };
+    }
+    case "request.canceled":
+      return {
+        title: `${data.clientName ?? "O cliente"} cancelou uma solicitação`,
+        body: `${actor} cancelou ${requestLabel(data)}.`,
+      };
+    case "request.delivery_answered":
+      return {
+        title: `${data.clientName ?? "O cliente"} respondeu a rodada ${data.round ?? ""}`.trim(),
+        body: `${actor} respondeu ${requestLabel(data)}: ${deliveryAnswerSummary(data.approved ?? 0, data.changes ?? 0)}.`,
+      };
   }
+}
+
+function requestLabel(data: NotificationData) {
+  return data.requestNumber ? `S-${data.requestNumber} ${data.requestTitle ?? ""}`.trim() : "uma solicitação";
 }
 
 /** Para onde a notificação leva. Quem saiu do trabalho não tem mais acesso a ele. */
 export function notificationHref(item: { type: NotificationType; data: NotificationData }) {
   if (item.type === "whiteboard.shared") return item.data.boardId ? `/quadros/${item.data.boardId}` : null;
+  if (
+    item.type === "request.created" ||
+    item.type === "request.message" ||
+    item.type === "request.canceled" ||
+    item.type === "request.delivery_answered"
+  ) {
+    if (!item.data.requestNumber) return null;
+    const page = `/solicitacoes/${item.data.requestNumber}`;
+    if (item.type === "request.message") return `${page}#mensagens`;
+    return item.type === "request.delivery_answered" ? `${page}#entregas` : page;
+  }
   if (item.type === "planning.assigned" || item.type === "planning.month_status" || item.type === "planning.post_status") {
     if (!item.data.clientSlug) return null;
     return `/planejamentos/${item.data.clientSlug}${item.data.month ? `?mes=${item.data.month}` : ""}`;

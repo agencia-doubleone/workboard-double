@@ -38,7 +38,11 @@ const jobFields = {
   briefing: z.string().max(JOB_BRIEFING_MAX_LENGTH, "O briefing ficou longo demais."),
 };
 
-export const createJobSchema = z.object(jobFields);
+export const createJobSchema = z.object({
+  ...jobFields,
+  /** Criado a partir de uma solicitação do cliente (fica vinculado a ela; não muda depois). */
+  clientRequestId: z.uuid("Solicitação inválida.").optional(),
+});
 export type CreateJobInput = z.input<typeof createJobSchema>;
 
 export const updateJobSchema = z.object({ ...jobFields, jobId });

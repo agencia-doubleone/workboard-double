@@ -1,13 +1,15 @@
 // Testa o envio de e-mails (npm run email:check -- voce@doubleone.com.br):
-// confere a conexão e o login no SMTP e manda os dois e-mails do Workboard
-// (boas-vindas e nova senha) para o endereço informado, com dados de exemplo.
+// confere a conexão e o login no SMTP e manda os e-mails do Workboard (boas-vindas,
+// nova senha, convite e código do portal do cliente) para o endereço informado,
+// com dados de exemplo.
 // Não usa o banco; só as variáveis SMTP_* do .env.local.
 
 import nodemailer from "nodemailer";
 
 import { env } from "@/env";
 import { emailDelivery, sendEmail } from "@/lib/email";
-import { passwordResetEmail, welcomeEmail } from "@/lib/email/templates";
+import { passwordResetEmail, portalCodeEmail, portalInviteEmail, welcomeEmail } from "@/lib/email/templates";
+import { PORTAL_CODE_EXPIRES_MINUTES, PORTAL_SIGN_IN_PATH } from "@/lib/portal";
 
 async function main() {
   const to = process.argv[2];
@@ -47,6 +49,14 @@ async function main() {
       expiresInHours: 1,
       requestedBy: "self",
     }),
+    portalInviteEmail({
+      to,
+      name: "Pessoa do Cliente",
+      clientName: "Cliente de Exemplo",
+      url: `${env.BETTER_AUTH_URL}${PORTAL_SIGN_IN_PATH}`,
+      invitedBy: "Administrador",
+    }),
+    portalCodeEmail({ to, name: "Pessoa do Cliente", code: "123456", expiresInMinutes: PORTAL_CODE_EXPIRES_MINUTES }),
   ];
   let failures = 0;
   for (const message of samples) {

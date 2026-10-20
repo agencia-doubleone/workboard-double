@@ -8,7 +8,7 @@ import { formatBytes, getMediaType, type MediaFolder } from "@/lib/media";
 import { MediaUploadError, uploadMedia } from "@/lib/media-upload";
 import { cn } from "@/lib/utils";
 
-// Anexos do compositor de mensagens (trabalhos e chat): cada arquivo sobe na
+// Anexos do compositor de mensagens (trabalhos, chat e solicitações): cada arquivo sobe na
 // hora para o CDN; tirar do rascunho apaga do CDN (discard).
 
 export type PendingFile = {
@@ -30,9 +30,13 @@ type Options = {
   max: number;
   /** Server Action que apaga do CDN um anexo enviado e tirado do rascunho. */
   discard: (input: { mediaId: string }) => Promise<unknown>;
+  /** "portal": quem envia é um contato do portal do cliente (rotas /api/portal-media). */
+  via?: "team" | "portal";
+  /** O fim do aviso de limite: "anexos por mensagem" (padrão), "arquivos por rodada"... */
+  limitLabel?: string;
 };
 
-export function useAttachmentUploads({ folder, enabled, max, discard }: Options) {
+export function useAttachmentUploads({ folder, enabled, max, discard, via = "team", limitLabel = "anexos por mensagem" }: Options) {
   const [files, setFiles] = useState<PendingFile[]>([]);
   const uploads = useRef(new Map<string, AbortController>());
 
@@ -47,7 +51,7 @@ export function useAttachmentUploads({ folder, enabled, max, discard }: Options)
       return;
     }
     const room = max - files.length;
-    if (room <= 0 || list.length > room) toast.error(`No máximo ${max} anexos por mensagem.`);
+    if (room <= 0 || list.length > room) toast.error(`No máximo ${max} ${limitLabel}.`);
     for (const file of list.slice(0, Math.max(0, room))) {
       const localId = crypto.randomUUID();
       const controller = new AbortController();
@@ -66,6 +70,7 @@ export function useAttachmentUploads({ folder, enabled, max, discard }: Options)
       ]);
       uploadMedia(file, {
         folder,
+        via,
         signal: controller.signal,
         onProgress: (progress) => updateFile(localId, { progress }),
       })

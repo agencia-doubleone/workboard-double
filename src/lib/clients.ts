@@ -67,3 +67,12 @@ export function formatSocialClasses(classes: readonly string[]) {
 export function displayUrl(url: string) {
   return url.replace(/^https?:\/\/(www\.)?/i, "").replace(/\/$/, "");
 }
+
+/** O @ do Instagram cadastrado no cliente ("https://instagram.com/cliente/", "@cliente" ou "cliente"); null se não der para ler. */
+export function instagramHandle(value: string | null | undefined) {
+  const text = value?.trim();
+  if (!text) return null;
+  const fromUrl = text.match(/instagram\.com\/([A-Za-z0-9._]{1,30})/i);
+  const handle = fromUrl ? fromUrl[1] : text.replace(/^@/, "");
+  return /^[A-Za-z0-9._]{1,30}$/.test(handle) && !["p", "reel", "explore"].includes(handle.toLowerCase()) ? handle : null;
+}

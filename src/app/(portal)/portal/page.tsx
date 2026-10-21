@@ -9,6 +9,7 @@ import { todayInSaoPaulo } from "@/lib/jobs";
 import { requirePortalSession } from "@/lib/portal-session";
 import { countClientRequests, listClientRequests } from "@/server/client-requests";
 import { listPortalNotifications } from "@/server/portal-notifications";
+import { listClientPendingPlanning } from "@/server/planning-sends";
 import { listDeliveryFilePreviews, listPendingDeliveriesOfClient } from "@/server/request-deliveries";
 import { PortalHomeView } from "./_home/portal-home-view";
 
@@ -35,7 +36,7 @@ async function PortalHome() {
   // 1º de janeiro em Brasília (sem horário de verão desde 2019).
   const yearStart = new Date(`${today.slice(0, 4)}-01-01T00:00:00-03:00`);
 
-  const [open, pendingDeliveries, finishedThisYear, totalRequests, news] = await Promise.all([
+  const [open, pendingDeliveries, finishedThisYear, totalRequests, news, pendingPlanning] = await Promise.all([
     listClientRequests(db, {
       viewer: { kind: "portal", portalUserId: contact.id, clientId: client.id, since: contact.createdAt },
       situation: "abertas",
@@ -45,6 +46,7 @@ async function PortalHome() {
     countClientRequests(db, client.id, { status: "finalizada", since: yearStart }),
     countClientRequests(db, client.id),
     listPortalNotifications(db, contact.id, { limit: NEWS_LIMIT }),
+    listClientPendingPlanning(db, client.id),
   ]);
   const previews = await listDeliveryFilePreviews(
     db,
@@ -61,6 +63,7 @@ async function PortalHome() {
       anniversary={companyAnniversaryYears(client.foundedOn, specialDayNow(now, env.GREETING_PREVIEW_DATE))}
       open={open}
       pendingDeliveries={pendingDeliveries.map((delivery) => ({ ...delivery, previews: previews.get(delivery.id) ?? [] }))}
+      pendingPlanning={pendingPlanning.map((row) => ({ month: row.month, stage: row.stage, posts: row.posts }))}
       finishedThisYear={finishedThisYear}
       totalRequests={totalRequests}
       news={news.items}

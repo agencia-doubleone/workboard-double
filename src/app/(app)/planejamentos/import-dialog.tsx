@@ -26,6 +26,7 @@ export function ImportDialog({
   month,
   monthLabel,
   existingPosts,
+  lockedPosts,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -34,6 +35,8 @@ export function ImportDialog({
   monthLabel: string;
   /** Quantos posts o mês já tem (para escolher entre adicionar e substituir). */
   existingPosts: number;
+  /** Desses, quantos "Substituir" não apaga (têm arte ou pauta fora do rascunho). */
+  lockedPosts: number;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
@@ -208,7 +211,12 @@ export function ImportDialog({
                   {(
                     [
                       ["append", "Adicionar aos que já existem"],
-                      ["replace", "Substituir: os posts atuais do mês saem de vez"],
+                      [
+                        "replace",
+                        lockedPosts >= existingPosts
+                          ? "Substituir: nenhum sai (todos têm arte ou pauta aprovada)"
+                          : "Substituir: os posts atuais do mês saem de vez",
+                      ],
                     ] as const
                   ).map(([value, label]) => (
                     <label key={value} className="flex cursor-pointer items-center gap-2 text-sm">
@@ -222,6 +230,13 @@ export function ImportDialog({
                       <span className={value === "replace" && mode === value ? "text-destructive-ink" : undefined}>{label}</span>
                     </label>
                   ))}
+                  {mode === "replace" && lockedPosts > 0 && lockedPosts < existingPosts && (
+                    <p className="text-xs text-muted-foreground">
+                      {lockedPosts === 1
+                        ? "1 post tem arte ou pauta aprovada e fica no mês."
+                        : `${lockedPosts} posts têm arte ou pauta aprovada e ficam no mês.`}
+                    </p>
+                  )}
                 </fieldset>
               )}
             </div>

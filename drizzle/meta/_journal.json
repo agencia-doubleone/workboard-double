@@ -162,6 +162,20 @@
       "when": 1792451488443,
       "tag": "0022_job_client_request",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792600045230,
+      "tag": "0023_planning_art_and_brief",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792603338103,
+      "tag": "0024_planning_sends",
+      "breakpoints": true
     }
   ]
 }

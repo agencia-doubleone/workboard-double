@@ -206,7 +206,9 @@ export async function completeUpload(
 
 /**
  * Apaga do CDN e do banco. Só quem enviou ou um admin. Com audit: false, quem
- * chama registra o próprio evento (ex.: trocar a foto de perfil).
+ * chama registra o próprio evento (ex.: trocar a foto de perfil). Com
+ * ownerCheck: false, quem chama já conferiu o acesso ao registro que guarda o
+ * arquivo (ex.: a arte de um post, que toda a equipe edita).
  */
 export async function deleteMedia(
   database: Database,
@@ -215,11 +217,12 @@ export async function deleteMedia(
     actor,
     meta,
     audit = true,
-  }: { id: string; actor: AuditActor & { role?: string | null }; meta: RequestMeta; audit?: boolean },
+    ownerCheck = true,
+  }: { id: string; actor: AuditActor & { role?: string | null }; meta: RequestMeta; audit?: boolean; ownerCheck?: boolean },
 ): Promise<MediaResult<{ name: string }>> {
   const row = await findMediaById(database, id);
   if (!row) return fail(404, "Arquivo não encontrado.");
-  if (!isUploader(row, actor) && (actor.external || actor.role !== "admin")) {
+  if (ownerCheck && !isUploader(row, actor) && (actor.external || actor.role !== "admin")) {
     return fail(403, "Você não tem permissão para excluir este arquivo.");
   }
 
@@ -247,7 +250,7 @@ export async function deleteMedia(
 export async function deleteMediaByKey(
   database: Database,
   key: string | null | undefined,
-  options: { actor: AuditActor & { role?: string | null }; meta: RequestMeta; audit?: boolean },
+  options: { actor: AuditActor & { role?: string | null }; meta: RequestMeta; audit?: boolean; ownerCheck?: boolean },
 ) {
   if (!key || EXTERNAL_URL.test(key)) return false;
   const row = await findMediaByKey(database, key);

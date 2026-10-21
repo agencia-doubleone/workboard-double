@@ -304,6 +304,58 @@ export function portalCodeEmail({
 }
 
 /** Rodada nova para aprovar no portal (vai para os contatos que podem aprovar). */
+/** Pauta ou artes do planejamento para aprovar (para quem pode aprovar). */
+export function planningForApprovalEmail({
+  to,
+  name,
+  clientName,
+  stage,
+  month,
+  posts,
+  sentBy,
+  url,
+}: {
+  to: string;
+  name: string;
+  clientName: string;
+  stage: "pauta" | "arte";
+  /** "novembro de 2026" */
+  month: string;
+  posts: number;
+  /** Quem da agência mandou. */
+  sentBy: string;
+  /** A página do planejamento no portal, já no mês. */
+  url: string;
+}): EmailMessage {
+  const firstName = firstNameOf(name);
+  const count = posts === 1 ? "1 post" : `${posts} posts`;
+  const what = stage === "pauta" ? `a pauta de ${month} (o texto dos posts, antes das artes)` : `as artes de ${month}`;
+  const intro = `${sentBy}, da Double One, mandou ${what} para a ${clientName} aprovar: ${count}.`;
+  const how =
+    "No portal, veja como apresentação ou no feed simulado, aprove cada post (ou tudo de uma vez) ou peça alterações dizendo o que mudar. A equipe recebe as respostas assim que você enviar.";
+  const title = stage === "pauta" ? `Pauta de ${month} para aprovar` : `Artes de ${month} para aprovar`;
+
+  return {
+    to,
+    subject: `Para aprovar: ${stage === "pauta" ? "pauta" : "artes"} de ${month} · Double One`,
+    text: [`Olá, ${firstName}.`, "", intro, "", how, "", `Ver e responder: ${url}`].join("\n"),
+    html: layout({
+      preheader: `${count} esperando a sua aprovação.`,
+      title,
+      body: [
+        paragraph(escapeHtml(`Olá, ${firstName}. ${intro}`)),
+        detailsBox([
+          { label: "Planejamento", value: `${month} · ${stage === "pauta" ? "pauta" : "artes"}` },
+          { label: "Posts", value: count },
+        ]),
+        button("Ver e responder", url),
+        paragraph(escapeHtml(how), { size: 13 }),
+      ].join("\n"),
+    }),
+    attachments: [logoAttachment()],
+  };
+}
+
 export function deliveryForApprovalEmail({
   to,
   name,

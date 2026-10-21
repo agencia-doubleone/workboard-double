@@ -17,6 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { UserAvatar } from "@/components/user-avatar";
 import { formatMonth } from "@/lib/calendar";
 import { deliveryAnswerSummary } from "@/lib/client-requests";
+import { planningAnswerSummary } from "@/lib/notifications";
 import { PLANNING_STATUSES } from "@/lib/planning";
 import { cn } from "@/lib/utils";
 import { getNotifications, readNotifications } from "./actions";
@@ -237,6 +238,20 @@ export function NotificationRow({ item, onSelect }: { item: NotificationView; on
       );
       break;
     }
+    case "planning.answered":
+      text = (
+        <>
+          {who} respondeu o planejamento de {item.data.month ? formatMonth(item.data.month) : "um mês"} de{" "}
+          <strong className="font-medium text-foreground">{item.data.clientName ?? "um cliente"}</strong>
+        </>
+      );
+      detail = (
+        <span className="flex flex-col items-start gap-1">
+          {planningAnswerSummary(item.data.approved ?? 0, item.data.changes ?? 0)}
+          {item.data.excerpt && <span className="line-clamp-2">“{item.data.excerpt}”</span>}
+        </span>
+      );
+      break;
     case "whiteboard.shared":
       text = (
         <>

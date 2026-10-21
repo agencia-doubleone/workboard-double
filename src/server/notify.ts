@@ -4,11 +4,12 @@ import { after } from "next/server";
 
 import { db } from "@/db";
 import { env } from "@/env";
+import { formatMonth } from "@/lib/calendar";
 import { requestCode } from "@/lib/client-requests";
 import { isEmailConfigured, sendEmail } from "@/lib/email";
-import { deliveryForApprovalEmail } from "@/lib/email/templates";
+import { deliveryForApprovalEmail, planningForApprovalEmail } from "@/lib/email/templates";
 import { excerpt, notificationHref, notificationText, type NotificationStatus } from "@/lib/notifications";
-import { PORTAL_REQUESTS_PATH } from "@/lib/portal";
+import { PORTAL_PLANNING_PATH, PORTAL_REQUESTS_PATH } from "@/lib/portal";
 import type { PortalNotificationData, PortalNotificationType } from "@/lib/portal-notifications";
 import { splitMentions } from "@/lib/jobs";
 import { messageEffectOf, messageEffectText } from "@/lib/messages";
@@ -423,5 +424,95 @@ export function notifyPortalDelivery(input: { request: PortalRequestRef; actor: 
         console.error("[email] falha no aviso de entrega", error);
       }
     }
+  });
+}
+
+// Planejamentos no portal: a pauta ou as artes para aprovar (sino dos contatos
+// ativos do cliente e e-mail para quem aprova) e as respostas do cliente (sino
+// da equipe: os responsáveis do planejamento ou, sem eles, os admins).
+
+/** Pauta ou artes do mês para aprovar. */
+export function notifyPortalPlanning(input: {
+  clientId: string;
+  clientName: string;
+  monthId: string;
+  month: string;
+  stage: "pauta" | "arte";
+  posts: number;
+  actor: Actor;
+}) {
+  const { actor } = input;
+  later("planejamento no portal", async () => {
+    const contacts = await listActivePortalContacts(db, input.clientId);
+    await insertPortalNotifications(
+      db,
+      contacts.map((contact) => ({
+        portalUserId: contact.id,
+        type: input.stage === "pauta" ? ("planning.brief" as const) : ("planning.art" as const),
+        planningMonthId: input.monthId,
+        actorId: actor.id,
+        actorName: actor.name,
+        data: { month: input.month, posts: input.posts },
+      })),
+    );
+    if (!isEmailConfigured()) return;
+    const url = `${env.BETTER_AUTH_URL}${PORTAL_PLANNING_PATH}?mes=${input.month}`;
+    for (const contact of contacts.filter((item) => item.canApprove)) {
+      try {
+        await sendEmail(
+          planningForApprovalEmail({
+            to: contact.email,
+            name: contact.name,
+            clientName: input.clientName,
+            stage: input.stage,
+            month: formatMonth(input.month),
+            posts: input.posts,
+            sentBy: actor.name,
+            url,
+          }),
+        );
+      } catch (error) {
+        console.error("[email] falha no aviso de planejamento", error);
+      }
+    }
+  });
+}
+
+/**
+ * O cliente respondeu posts do planejamento (ou um admin registrou a resposta
+ * dele): avisa os responsáveis ativos e, sem nenhum, os admins ativos. Nunca quem fez.
+ */
+export function notifyPlanningAnswered(input: {
+  planning: PlanningRef;
+  actor: { id: string | null; name: string };
+  month: string;
+  approved: number;
+  changes: number;
+  note: string | null;
+}) {
+  const { planning, actor } = input;
+  later("resposta do planejamento", async () => {
+    const members = await listActiveMemberIds(db, planning.id);
+    const recipients = (members.length ? members : await listActiveAdminIds(db)).filter((id) => id !== actor.id);
+    const rows = await insertNotifications(
+      db,
+      recipients.map((userId) => ({
+        userId,
+        type: "planning.answered" as const,
+        actorId: actor.id,
+        actorName: actor.name,
+        jobId: null,
+        planningId: planning.id,
+        data: {
+          clientName: planning.clientName,
+          clientSlug: planning.clientSlug,
+          month: input.month,
+          approved: input.approved,
+          changes: input.changes,
+          ...(input.note ? { excerpt: excerpt(input.note) } : {}),
+        },
+      })),
+    );
+    await deliver(rows);
   });
 }

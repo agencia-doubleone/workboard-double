@@ -13,6 +13,10 @@ import {
   jobMessage,
   jobMessageAttachment,
   media,
+  planning,
+  planningMonth,
+  planningPost,
+  planningPostAsset,
   portalUser,
   user,
 } from "@/db/schema";
@@ -27,7 +31,8 @@ import { listWhiteboardImages } from "@/server/whiteboards";
 // - user.image, portal_user.image (foto do contato no portal) e client.logoKey guardam a chave do CDN;
 // - anexos de mensagens (trabalhos, chat e solicitações) apontam para media.id;
 // - textos ricos (job.briefing, client.notes, client_request.briefing) têm a URL com /uploads/<chave>;
-// - imagens dos quadros brancos guardam a chave em `fileId` (whiteboard_element.data).
+// - imagens dos quadros brancos guardam a chave em `fileId` (whiteboard_element.data);
+// - artes dos posts dos planejamentos (planning_post_asset, todas as versões) apontam para media.id.
 
 export type MediaUse =
   | { kind: "avatar"; userName: string }
@@ -40,6 +45,7 @@ export type MediaUse =
   | { kind: "request-attachment"; number: number; title: string }
   | { kind: "request-briefing"; number: number; title: string }
   | { kind: "request-delivery"; number: number; title: string; round: number }
+  | { kind: "planning-art"; clientName: string; clientSlug: string; month: string; headline: string }
   /** Quadro pessoal é privado (nem admin abre): sem nome nem link. */
   | { kind: "whiteboard"; whiteboardId: string; title: string; private: boolean };
 
@@ -98,7 +104,7 @@ export async function listMediaLibrary(database: Database) {
       .where(like(client.notes, "%/uploads/%")),
     listWhiteboardImages(database),
   ]);
-  const [requestAttachments, requestBriefings, deliveryFiles] = await Promise.all([
+  const [requestAttachments, requestBriefings, deliveryFiles, planningArt] = await Promise.all([
     database
       .selectDistinct({
         mediaId: clientRequestMessageAttachment.mediaId,
@@ -123,6 +129,21 @@ export async function listMediaLibrary(database: Database) {
       .innerJoin(clientRequestDelivery, eq(clientRequestDelivery.id, clientRequestDeliveryFile.deliveryId))
       .innerJoin(clientRequest, eq(clientRequest.id, clientRequestDelivery.requestId))
       .where(isNotNull(clientRequestDeliveryFile.mediaId)),
+    database
+      .selectDistinct({
+        mediaId: planningPostAsset.mediaId,
+        postId: planningPost.id,
+        headline: planningPost.headline,
+        month: planningMonth.month,
+        clientName: client.name,
+        clientSlug: client.slug,
+      })
+      .from(planningPostAsset)
+      .innerJoin(planningPost, eq(planningPost.id, planningPostAsset.postId))
+      .innerJoin(planningMonth, eq(planningMonth.id, planningPost.monthId))
+      .innerJoin(planning, eq(planning.id, planningMonth.planningId))
+      .innerJoin(client, eq(client.id, planning.clientId))
+      .where(isNotNull(planningPostAsset.mediaId)),
   ]);
 
   const byKey = new Map<string, MediaUse[]>();
@@ -146,6 +167,16 @@ export async function listMediaLibrary(database: Database) {
   for (const row of deliveryFiles) {
     if (!row.mediaId) continue;
     add(byId, row.mediaId, { kind: "request-delivery", number: row.number, title: row.title, round: row.round });
+  }
+  for (const row of planningArt) {
+    if (!row.mediaId) continue;
+    add(byId, row.mediaId, {
+      kind: "planning-art",
+      clientName: row.clientName,
+      clientSlug: row.clientSlug,
+      month: row.month,
+      headline: row.headline,
+    });
   }
   for (const row of requestBriefings) {
     for (const key of new Set(keysInHtml(row.html))) {

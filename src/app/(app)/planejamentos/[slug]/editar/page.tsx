@@ -51,6 +51,7 @@ async function EditPlanningContent({ params }: { params: PageProps<"/planejament
             postsPerMonth: found.planning.postsPerMonth ? String(found.planning.postsPerMonth) : "",
             overview: found.planning.overview ?? "",
             memberIds: found.members.map((person) => person.id),
+            approvesBrief: found.planning.approvesBrief,
           }}
           clients={[]}
           client={{ name: found.client.name, slug: found.client.slug, logoUrl: resolveMediaUrl(found.client.logoKey) }}

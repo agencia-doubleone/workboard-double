@@ -15,6 +15,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { UserAvatar } from "@/components/user-avatar";
 import { prepareContentImage } from "@/lib/avatar-image";
 import { uploadMedia } from "@/lib/media-upload";
@@ -73,6 +74,7 @@ export function PlanningForm({ initial, clients, people, client, uploadsEnabled 
       postsPerMonth: values.postsPerMonth.trim() ? Number(values.postsPerMonth) : null,
       overview: values.overview,
       memberIds: values.memberIds,
+      approvesBrief: values.approvesBrief,
     };
     setError(null);
     setFieldErrors({});
@@ -153,6 +155,20 @@ export function PlanningForm({ initial, clients, people, client, uploadsEnabled 
                 />
                 <FieldDescription>A meta do contrato, para comparar com o que foi planejado em cada mês.</FieldDescription>
                 <FieldError>{fieldErrors.postsPerMonth?.[0]}</FieldError>
+              </Field>
+              <Field orientation="horizontal">
+                <Switch
+                  id="planning-approves-brief"
+                  checked={values.approvesBrief}
+                  onCheckedChange={(checked) => set("approvesBrief", checked)}
+                  disabled={isPending}
+                />
+                <div className="grid gap-0.5">
+                  <FieldLabel htmlFor="planning-approves-brief">Aprovar pauta</FieldLabel>
+                  <FieldDescription>
+                    O cliente aprova o texto dos posts antes das artes, e a arte só sobe com a pauta aprovada. Desligado, o cliente aprova só as artes.
+                  </FieldDescription>
+                </div>
               </Field>
             </FieldGroup>
           </CardContent>

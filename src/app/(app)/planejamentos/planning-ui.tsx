@@ -1,24 +1,14 @@
-import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ClapperboardIcon,
-  GalleryHorizontalIcon,
-  ImageIcon,
-  MusicIcon,
-  PinIcon,
-  SmartphoneIcon,
-  VideoIcon,
-  type LucideIcon,
-} from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import Link from "next/link";
 
-import { FacebookIcon, InstagramIcon, LinkedinIcon, YoutubeIcon } from "@/components/brand-icons";
 import { Hint } from "@/components/hint";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { formatMonth, shiftMonth, type MonthKey } from "@/lib/calendar";
-import { PLANNING_STATUSES, SOCIAL_NETWORKS, type PlanningStatus, type PostKind, type SocialNetwork } from "@/lib/planning";
+import { PLANNING_STATUSES, type PlanningStatus } from "@/lib/planning";
 import { cn } from "@/lib/utils";
+
+export { KIND_ICONS, NetworkIcon } from "@/components/planning/planning-icons";
 
 // Peças pequenas dos planejamentos, usadas na lista e na página do cliente.
 
@@ -30,28 +20,6 @@ export function PlanningStatusBadge({ status, className }: { status: PlanningSta
     </Badge>
   );
 }
-
-const NETWORK_ICONS: Record<SocialNetwork, React.ComponentType<{ className?: string }>> = {
-  instagram: InstagramIcon,
-  facebook: FacebookIcon,
-  linkedin: LinkedinIcon,
-  youtube: YoutubeIcon,
-  tiktok: MusicIcon,
-  pinterest: PinIcon,
-};
-
-export function NetworkIcon({ network, className }: { network: SocialNetwork; className?: string }) {
-  const Icon = NETWORK_ICONS[network];
-  return <Icon className={cn("size-3.5", className)} aria-label={SOCIAL_NETWORKS[network]} />;
-}
-
-export const KIND_ICONS: Record<PostKind, LucideIcon> = {
-  estatico: ImageIcon,
-  carrossel: GalleryHorizontalIcon,
-  reels: ClapperboardIcon,
-  stories: SmartphoneIcon,
-  video: VideoIcon,
-};
 
 /** Setas de mês anterior/próximo e o nome do mês (links: o mês fica na URL). */
 export function MonthNav({ month, hrefFor, current }: { month: MonthKey; hrefFor: (month: MonthKey) => string; current: MonthKey }) {

@@ -10,7 +10,7 @@ import type { PortalNotificationData, PortalNotificationType } from "@/lib/porta
 export type NewPortalNotification = {
   portalUserId: string;
   type: Exclude<PortalNotificationType, "request.message">;
-  clientRequestId: string;
+} & ({ clientRequestId: string; planningMonthId?: never } | { planningMonthId: string; clientRequestId?: never }) & {
   actorId: string | null;
   actorName: string;
   data: PortalNotificationData;
@@ -120,6 +120,22 @@ export async function markPortalRequestNotificationsRead(database: Database, por
       and(
         eq(portalNotification.portalUserId, portalUserId),
         eq(portalNotification.clientRequestId, clientRequestId),
+        isNull(portalNotification.readAt),
+      ),
+    )
+    .returning({ id: portalNotification.id });
+  return rows.length;
+}
+
+/** Abrir o mês do planejamento no portal dá como vistas as notificações dele. */
+export async function markPortalPlanningNotificationsRead(database: Database, portalUserId: string, planningMonthId: string) {
+  const rows = await database
+    .update(portalNotification)
+    .set({ readAt: new Date() })
+    .where(
+      and(
+        eq(portalNotification.portalUserId, portalUserId),
+        eq(portalNotification.planningMonthId, planningMonthId),
         isNull(portalNotification.readAt),
       ),
     )

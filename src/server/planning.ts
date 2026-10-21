@@ -82,7 +82,14 @@ async function findPlanning(database: Database, where: ReturnType<typeof eq>) {
   const [found] = await database
     .select({
       planning,
-      client: { id: client.id, name: client.name, slug: client.slug, logoKey: client.logoKey, archivedAt: client.archivedAt },
+      client: {
+        id: client.id,
+        name: client.name,
+        slug: client.slug,
+        logoKey: client.logoKey,
+        instagram: client.instagram,
+        archivedAt: client.archivedAt,
+      },
     })
     .from(planning)
     .innerJoin(client, eq(client.id, planning.clientId))

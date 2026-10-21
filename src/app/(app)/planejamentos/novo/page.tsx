@@ -33,7 +33,7 @@ async function NewPlanningContent() {
       />
       <ResetOnNavigation>
         <PlanningForm
-          initial={{ clientId: null, networks: ["instagram"], postsPerMonth: "", overview: "", memberIds: [] }}
+          initial={{ clientId: null, networks: ["instagram"], postsPerMonth: "", overview: "", memberIds: [], approvesBrief: false }}
           clients={clients.map((item) => ({ id: item.id, name: item.name, logoUrl: resolveMediaUrl(item.logoKey) }))}
           people={people.map((person) => ({ id: person.id, name: person.name, imageUrl: resolveMediaUrl(person.image) }))}
           uploadsEnabled={isMediaConfigured()}

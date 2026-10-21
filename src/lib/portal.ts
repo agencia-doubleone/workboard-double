@@ -10,6 +10,7 @@ export const PORTAL_SIGN_IN_PATH = "/portal/entrar";
 export const PORTAL_PROFILE_PATH = "/portal/perfil";
 export const PORTAL_REQUESTS_PATH = "/portal/solicitacoes";
 export const PORTAL_NEW_REQUEST_PATH = "/portal/solicitacoes/nova";
+export const PORTAL_PLANNING_PATH = "/portal/planejamento";
 
 /** Código de entrada por e-mail. */
 export const PORTAL_CODE_LENGTH = 6;

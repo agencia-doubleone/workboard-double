@@ -12,11 +12,15 @@ import { UserAvatar } from "@/components/user-avatar";
 import { db } from "@/db";
 import { formatCompactDay, formatMonth, isMonthKey, monthOf } from "@/lib/calendar";
 import { todayInSaoPaulo } from "@/lib/jobs";
-import { DEFAULT_PLANNING_STATUS, defaultPlanningMonth, SOCIAL_NETWORKS } from "@/lib/planning";
+import { formatDate } from "@/lib/format";
+import { artMediaKind, DEFAULT_PLANNING_STATUS, defaultPlanningMonth, SOCIAL_NETWORKS } from "@/lib/planning";
 import { requireSession } from "@/lib/session";
-import { resolveMediaUrl } from "@/server/media";
+import { getMediaUrl, isMediaConfigured, resolveMediaUrl } from "@/server/media";
 import { findPlanningBySlug, findPlanningMonth, listPlanningPosts } from "@/server/planning";
+import { listPostArt } from "@/server/planning-approvals";
+import { listPendingSendPosts, listPendingSends, listPostHistory } from "@/server/planning-sends";
 import { MonthWorkspace } from "../month-workspace";
+import { changesRequestOf, toPendingSendView, toPostHistories } from "../present";
 import { MonthNav, NetworkIcon } from "../planning-ui";
 
 export const metadata: Metadata = { title: "Planejamento" };
@@ -40,7 +44,7 @@ async function PlanningContent({
   params: PageProps<"/planejamentos/[slug]">["params"];
   searchParams: PageProps<"/planejamentos/[slug]">["searchParams"];
 }) {
-  await requireSession();
+  const session = await requireSession();
   const found = await findPlanningBySlug(db, (await params).slug);
   if (!found) notFound();
   const { planning, client, members } = found;
@@ -53,6 +57,14 @@ async function PlanningContent({
   const month = isMonthKey(requested) ? requested : standard;
   const monthRow = await findPlanningMonth(db, planning.id, month);
   const posts = monthRow ? await listPlanningPosts(db, monthRow.id) : [];
+  const postIds = posts.map((post) => post.id);
+  const [art, waiting, sends, history] = await Promise.all([
+    listPostArt(db, postIds),
+    monthRow ? listPendingSendPosts(db, monthRow.id) : Promise.resolve([]),
+    monthRow ? listPendingSends(db, monthRow.id) : Promise.resolve([]),
+    listPostHistory(db, postIds),
+  ]);
+  const histories = toPostHistories(history);
   const base = `/planejamentos/${client.slug}`;
   const hrefFor = (target: string) => (target === standard ? base : `${base}?mes=${target}`);
 
@@ -141,6 +153,11 @@ async function PlanningContent({
         planningId={planning.id}
         goal={planning.postsPerMonth}
         defaultNetwork={planning.networks[0] ?? null}
+        approvesBrief={planning.approvesBrief}
+        isAdmin={session.user.role === "admin"}
+        uploadsEnabled={isMediaConfigured()}
+        previewHref={`${base}/previa?mes=${month}`}
+        pendingSends={sends.map(toPendingSendView)}
         month={{
           month,
           label: formatMonth(month),
@@ -164,6 +181,25 @@ async function PlanningContent({
           scenes: post.scenes,
           notes: post.notes,
           status: post.status,
+          briefState: post.briefState,
+          briefDecision:
+            post.briefDecidedAt && post.briefDecidedByName
+              ? { byName: post.briefDecidedByName, side: post.briefDecidedBySide ?? "team", dateLabel: formatDate(post.briefDecidedAt) }
+              : null,
+          artState: post.artState,
+          // Arte que saiu do CDN (versão antiga limpa) ou que não serve mais fica fora.
+          art: (art.get(post.id) ?? []).flatMap((row) => {
+            const kind = row.media ? artMediaKind(row.media.name) : null;
+            return row.media && row.mediaId && kind
+              ? [{ mediaId: row.mediaId, url: getMediaUrl(row.media.key), name: row.name, kind, role: row.role }]
+              : [];
+          }),
+          waiting: waiting.find((row) => row.postId === post.id)?.stage ?? null,
+          changesRequest: changesRequestOf(
+            post,
+            history.reviews.filter((review) => review.postId === post.id),
+          ),
+          history: (histories.get(post.id) ?? []).map(({ id, text, comment, dateLabel }) => ({ id, text, comment, dateLabel })),
         }))}
       />
     </div>

@@ -1,4 +1,5 @@
 import { formatBytes, getFileExtension, isPreviewableImage, MEDIA_FOLDER_LABELS, MEDIA_FOLDERS, type MediaFolder } from "@/lib/media";
+import { formatMonth } from "@/lib/calendar";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { getMediaUrl } from "@/server/media";
 import {
@@ -34,6 +35,11 @@ function toUseView(use: MediaUse): FileUseView {
       return {
         label: `Rodada ${use.round} para aprovação da S-${use.number} ${use.title}`,
         href: `/solicitacoes/${use.number}#entregas`,
+      };
+    case "planning-art":
+      return {
+        label: `Arte do post “${use.headline || "sem headline"}” (${formatMonth(use.month)}) de ${use.clientName}`,
+        href: `/planejamentos/${use.clientSlug}?mes=${use.month}`,
       };
     case "whiteboard":
       return use.private

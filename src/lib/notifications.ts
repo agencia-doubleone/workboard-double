@@ -14,6 +14,8 @@ export const NOTIFICATION_TYPES = [
   "planning.assigned",
   "planning.month_status",
   "planning.post_status",
+  /** O cliente respondeu posts do planejamento pelo portal (ou um admin registrou a resposta dele). */
+  "planning.answered",
   "whiteboard.shared",
   "request.created",
   "request.message",
@@ -118,6 +120,13 @@ export function notificationText(item: NotificationLike): { title: string; body:
         body: `${actor} mudou o post${day} para "${status}"${data.headline ? `: ${excerpt(data.headline, 80)}` : "."}`,
       };
     }
+    case "planning.answered": {
+      const month = data.month ? formatMonth(data.month) : "o mês";
+      return {
+        title: `${data.clientName ?? "O cliente"} respondeu o planejamento de ${month}`,
+        body: `${actor}: ${planningAnswerSummary(data.approved ?? 0, data.changes ?? 0)}.${data.excerpt ? ` "${data.excerpt}"` : ""}`,
+      };
+    }
     case "whiteboard.shared":
       return {
         title: "Novo quadro para você",
@@ -148,6 +157,15 @@ export function notificationText(item: NotificationLike): { title: string; body:
   }
 }
 
+/** "3 posts aprovados e 2 com alteração pedida" */
+export function planningAnswerSummary(approved: number, changes: number) {
+  const parts = [
+    approved > 0 && `${approved} ${approved === 1 ? "post aprovado" : "posts aprovados"}`,
+    changes > 0 && `${changes} com alteração pedida`,
+  ].filter(Boolean);
+  return parts.join(" e ") || "nenhum post";
+}
+
 function requestLabel(data: NotificationData) {
   return data.requestNumber ? `S-${data.requestNumber} ${data.requestTitle ?? ""}`.trim() : "uma solicitação";
 }
@@ -166,7 +184,12 @@ export function notificationHref(item: { type: NotificationType; data: Notificat
     if (item.type === "request.message") return `${page}#mensagens`;
     return item.type === "request.delivery_answered" ? `${page}#entregas` : page;
   }
-  if (item.type === "planning.assigned" || item.type === "planning.month_status" || item.type === "planning.post_status") {
+  if (
+    item.type === "planning.assigned" ||
+    item.type === "planning.month_status" ||
+    item.type === "planning.post_status" ||
+    item.type === "planning.answered"
+  ) {
     if (!item.data.clientSlug) return null;
     return `/planejamentos/${item.data.clientSlug}${item.data.month ? `?mes=${item.data.month}` : ""}`;
   }

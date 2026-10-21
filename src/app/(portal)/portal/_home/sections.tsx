@@ -2,10 +2,12 @@ import {
   ArrowRightIcon,
   CalendarClockIcon,
   FileIcon,
+  ImagesIcon,
   InboxIcon,
   ListChecksIcon,
   MessageSquareIcon,
   MessagesSquareIcon,
+  NotebookPenIcon,
   PlayIcon,
   RefreshCwIcon,
   SendIcon,
@@ -23,7 +25,8 @@ import { UserAvatar } from "@/components/user-avatar";
 import { requestCode } from "@/lib/client-requests";
 import { formatRelative } from "@/lib/format";
 import { getFileExtension, isPreviewableImage } from "@/lib/media";
-import { PORTAL_NEW_REQUEST_PATH, PORTAL_PROFILE_PATH, PORTAL_REQUESTS_PATH } from "@/lib/portal";
+import { formatMonth } from "@/lib/calendar";
+import { PORTAL_NEW_REQUEST_PATH, PORTAL_PLANNING_PATH, PORTAL_PROFILE_PATH, PORTAL_REQUESTS_PATH } from "@/lib/portal";
 import {
   portalNotificationHref,
   portalNotificationText,
@@ -208,12 +211,53 @@ export function ForecastList({ entries }: { entries: ForecastEntry[] }) {
   );
 }
 
+/** Pauta ou artes do planejamento esperando resposta, uma linha por mês e etapa. */
+export function PendingPlanning({
+  rows,
+  canApprove,
+}: {
+  rows: { month: string; stage: "pauta" | "arte"; posts: number }[];
+  canApprove: boolean;
+}) {
+  return (
+    <ul className="flex flex-col gap-2">
+      {rows.map((row) => {
+        const Icon = row.stage === "pauta" ? NotebookPenIcon : ImagesIcon;
+        return (
+          <li key={`${row.month}-${row.stage}`}>
+            <Link
+              href={`${PORTAL_PLANNING_PATH}?mes=${row.month}`}
+              className="flex items-center gap-3 rounded-lg border bg-background px-3 py-2.5 text-sm outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/50"
+            >
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-warning/14 text-warning-ink">
+                <Icon className="size-4" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-medium first-letter:uppercase">
+                  {row.stage === "pauta" ? "Pauta" : "Artes"} de {formatMonth(row.month)}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {row.posts === 1 ? "1 post" : `${row.posts} posts`} do planejamento
+                  {canApprove ? " esperando sua resposta" : " esperando quem aprova"}
+                </span>
+              </span>
+              <ArrowRightIcon className="size-4 shrink-0 text-muted-foreground" />
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 const NEWS_ICONS: Record<PortalNotificationType, LucideIcon> = {
   "request.created": InboxIcon,
   "request.delivery": ListChecksIcon,
   "request.message": MessageSquareIcon,
   "request.status": RefreshCwIcon,
   "request.expected_on": CalendarClockIcon,
+  "planning.brief": NotebookPenIcon,
+  "planning.art": ImagesIcon,
 };
 
 /** O que a Double One fez nas solicitações (os avisos do sino, os mais recentes primeiro). */

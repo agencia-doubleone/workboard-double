@@ -7,9 +7,9 @@ import { PortalSidebar } from "./portal-sidebar";
  * header, tema e cor de destaque deste navegador), sem nada da equipe: nem
  * tempo real, nem conquistas, nem busca, nem sino.
  */
-export function PortalShell({ userMenu, children }: { userMenu: React.ReactNode; children: React.ReactNode }) {
+export function PortalShell({ nav, userMenu, children }: { nav: React.ReactNode; userMenu: React.ReactNode; children: React.ReactNode }) {
   return (
-    <ShellFrame sidebar={<PortalSidebar />} header={<PortalHeader userMenu={userMenu} />}>
+    <ShellFrame sidebar={<PortalSidebar nav={nav} />} header={<PortalHeader userMenu={userMenu} />}>
       {children}
     </ShellFrame>
   );

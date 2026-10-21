@@ -32,6 +32,7 @@ import {
   NewsFeed,
   OpenRequestList,
   PendingDeliveries,
+  PendingPlanning,
   type ForecastEntry,
   type PendingDeliveryEntry,
 } from "./sections";
@@ -60,6 +61,8 @@ export type PortalHomeData = {
   /** As solicitações em aberto do cliente (todas, para os números e as previsões). */
   open: { rows: ClientRequestListItem[]; total: number };
   pendingDeliveries: PendingDeliveryEntry[];
+  /** Pauta ou artes do planejamento esperando resposta, por mês e etapa. */
+  pendingPlanning: { month: string; stage: "pauta" | "arte"; posts: number }[];
   finishedThisYear: number;
   /** Quantas o cliente já teve (zero: mostra como o portal funciona). */
   totalRequests: number;
@@ -81,10 +84,12 @@ export function PortalHomeView({
   anniversary,
   open,
   pendingDeliveries,
+  pendingPlanning,
   finishedThisYear,
   totalRequests,
   news,
 }: PortalHomeData) {
+  const toApprove = pendingDeliveries.length + pendingPlanning.length;
   const rows = open.rows.map((row) => toRequestRow(row, today));
   const unread = rows.reduce((sum, row) => sum + row.messages.unread, 0);
   const forecast: ForecastEntry[] = open.rows
@@ -103,11 +108,16 @@ export function PortalHomeView({
   // Saudação (no aniversário da empresa, os parabéns) e o resumo do que espera o contato.
   const greeting = getGreeting(now);
   const GreetingIcon = anniversary ? CakeIcon : (GREETING_ICONS[greeting] ?? SunIcon);
+  const planningPosts = pendingPlanning.reduce((sum, row) => sum + row.posts, 0);
   const summaryParts = [
     pendingDeliveries.length > 0 &&
       (contact.canApprove
         ? plural(pendingDeliveries.length, "entrega esperando sua aprovação", "entregas esperando sua aprovação")
         : plural(pendingDeliveries.length, "entrega esperando aprovação", "entregas esperando aprovação")),
+    planningPosts > 0 &&
+      (contact.canApprove
+        ? plural(planningPosts, "post do planejamento esperando sua aprovação", "posts do planejamento esperando sua aprovação")
+        : plural(planningPosts, "post do planejamento esperando aprovação", "posts do planejamento esperando aprovação")),
     unread > 0 && plural(unread, "mensagem nova da equipe", "mensagens novas da equipe"),
   ].filter((part): part is string => Boolean(part));
   const summary =
@@ -154,15 +164,15 @@ export function PortalHomeView({
         </Link>
       </header>
 
-      {totalRequests > 0 && (
+      {(totalRequests > 0 || toApprove > 0) && (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Stat label="Em aberto" value={open.total} detail="com a Double One" href={PORTAL_REQUESTS_PATH} />
           <Stat
             label="Para aprovar"
-            value={pendingDeliveries.length}
+            value={toApprove}
             detail={contact.canApprove ? "esperando sua resposta" : "esperando quem aprova"}
-            tone={pendingDeliveries.length > 0 ? "warn" : undefined}
-            href={pendingDeliveries.length > 0 ? "#para-aprovar" : undefined}
+            tone={toApprove > 0 ? "warn" : undefined}
+            href={toApprove > 0 ? "#para-aprovar" : undefined}
           />
           <Stat label="Mensagens novas" value={unread} detail="da equipe da Double One" />
           <Stat
@@ -175,7 +185,7 @@ export function PortalHomeView({
         </div>
       )}
 
-      {pendingDeliveries.length > 0 && (
+      {toApprove > 0 && (
         <section
           id="para-aprovar"
           aria-labelledby="para-aprovar-titulo"
@@ -188,15 +198,18 @@ export function PortalHomeView({
             </h2>
             <p className="text-sm text-muted-foreground">
               {contact.canApprove
-                ? "A Double One mandou arquivos para você aprovar: aprove cada um ou peça alterações."
-                : `A Double One mandou arquivos para a aprovação da ${client.name}. Quem aprova recebeu o aviso.`}
+                ? "A Double One mandou material para você aprovar: aprove cada um ou peça alterações."
+                : `A Double One mandou material para a aprovação da ${client.name}. Quem aprova recebeu o aviso.`}
             </p>
           </div>
-          <PendingDeliveries
-            deliveries={pendingDeliveries}
-            canApprove={contact.canApprove}
-            now={now}
-          />
+          {pendingPlanning.length > 0 && <PendingPlanning rows={pendingPlanning} canApprove={contact.canApprove} />}
+          {pendingDeliveries.length > 0 && (
+            <PendingDeliveries
+              deliveries={pendingDeliveries}
+              canApprove={contact.canApprove}
+              now={now}
+            />
+          )}
         </section>
       )}
 

@@ -3,9 +3,10 @@
 // Quem recebe são os contatos ativos do cliente; quem faz é sempre alguém da
 // Double One (as ações do próprio contato não avisam ninguém do portal).
 
+import { formatMonth } from "@/lib/calendar";
 import { REQUEST_STATUSES, requestCode, type RequestStatus } from "@/lib/client-requests";
 import { formatCalendarDate } from "@/lib/format";
-import { PORTAL_REQUESTS_PATH } from "@/lib/portal";
+import { PORTAL_PLANNING_PATH, PORTAL_REQUESTS_PATH } from "@/lib/portal";
 
 export const PORTAL_NOTIFICATION_TYPES = [
   /** A equipe abriu uma solicitação em nome do cliente. */
@@ -16,12 +17,17 @@ export const PORTAL_NOTIFICATION_TYPES = [
   "request.message",
   "request.status",
   "request.expected_on",
+  /** Pauta do planejamento para aprovar (o texto dos posts). */
+  "planning.brief",
+  /** Artes do planejamento para aprovar. */
+  "planning.art",
 ] as const;
 export type PortalNotificationType = (typeof PORTAL_NOTIFICATION_TYPES)[number];
 
+/** Copiado no momento: das solicitações (request.*) ou do planejamento (planning.*). */
 export type PortalNotificationData = {
-  requestNumber: number;
-  requestTitle: string;
+  requestNumber?: number;
+  requestTitle?: string;
   /** request.delivery */
   round?: number;
   files?: number;
@@ -31,6 +37,9 @@ export type PortalNotificationData = {
   expectedOn?: string | null;
   /** request.message: trecho da última mensagem. */
   excerpt?: string;
+  /** planning.*: o mês, "AAAA-MM", e quantos posts foram. */
+  month?: string;
+  posts?: number;
 };
 
 export const PORTAL_NOTIFICATIONS_PAGE_SIZE = 20;
@@ -40,7 +49,10 @@ export const PORTAL_NOTIFICATIONS_POLL_MS = 30_000;
 /** Título e texto de cada notificação do portal (quem fez já vem com " (Double One)" na tela). */
 export function portalNotificationText(item: { type: PortalNotificationType; data: PortalNotificationData; count: number }) {
   const { data } = item;
-  const request = `${requestCode(data.requestNumber)} ${data.requestTitle}`;
+  const code = data.requestNumber ? requestCode(data.requestNumber) : "Solicitação";
+  const request = `${code} ${data.requestTitle ?? ""}`.trim();
+  const month = data.month ? formatMonth(data.month) : "o mês";
+  const posts = data.posts === 1 ? "1 post" : `${data.posts ?? 0} posts`;
   switch (item.type) {
     case "request.created":
       return { title: "Nova solicitação aberta pela Double One", body: request };
@@ -51,13 +63,13 @@ export function portalNotificationText(item: { type: PortalNotificationType; dat
       };
     case "request.message":
       return {
-        title: item.count > 1 ? `${item.count} mensagens novas em ${requestCode(data.requestNumber)}` : `Mensagem em ${requestCode(data.requestNumber)}`,
+        title: item.count > 1 ? `${item.count} mensagens novas em ${code}` : `Mensagem em ${code}`,
         body: data.excerpt ?? request,
       };
     case "request.status":
       return {
-        title: `${requestCode(data.requestNumber)} agora está em "${data.status ? REQUEST_STATUSES[data.status].label : "outro status"}"`,
-        body: data.requestTitle,
+        title: `${code} agora está em "${data.status ? REQUEST_STATUSES[data.status].label : "outro status"}"`,
+        body: data.requestTitle ?? "",
       };
     case "request.expected_on":
       return {
@@ -66,11 +78,18 @@ export function portalNotificationText(item: { type: PortalNotificationType; dat
           : "Previsão de entrega retirada",
         body: request,
       };
+    case "planning.brief":
+      return { title: `Pauta de ${month} para aprovar`, body: `${posts} esperando sua resposta: o texto antes das artes.` };
+    case "planning.art":
+      return { title: `Artes de ${month} para aprovar`, body: `${posts} esperando sua resposta.` };
   }
 }
 
 /** Para onde a notificação leva no portal. */
 export function portalNotificationHref(item: { type: PortalNotificationType; data: PortalNotificationData }) {
+  if (item.type === "planning.brief" || item.type === "planning.art") {
+    return item.data.month ? `${PORTAL_PLANNING_PATH}?mes=${item.data.month}` : PORTAL_PLANNING_PATH;
+  }
   const page = `${PORTAL_REQUESTS_PATH}/${item.data.requestNumber}`;
   if (item.type === "request.delivery") return `${page}#entregas`;
   if (item.type === "request.message") return `${page}#mensagens`;

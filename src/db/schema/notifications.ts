@@ -1,12 +1,12 @@
 import { sql } from "drizzle-orm";
-import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 import type { NotificationData, NotificationType } from "@/lib/notifications";
 import type { PortalNotificationData, PortalNotificationType } from "@/lib/portal-notifications";
 import { user } from "./auth";
 import { clientRequest } from "./client-requests";
 import { job } from "./jobs";
-import { planning } from "./planning";
+import { planning, planningMonth } from "./planning";
 import { portalUser } from "./portal";
 import { whiteboard } from "./whiteboards";
 
@@ -67,9 +67,9 @@ export const portalNotification = pgTable(
       .notNull()
       .references(() => portalUser.id, { onDelete: "cascade" }),
     type: text("type").$type<PortalNotificationType>().notNull(),
-    clientRequestId: uuid("client_request_id")
-      .notNull()
-      .references(() => clientRequest.id, { onDelete: "cascade" }),
+    /** Do que é a notificação: uma solicitação ou um mês do planejamento (um dos dois, conferido no banco). */
+    clientRequestId: uuid("client_request_id").references(() => clientRequest.id, { onDelete: "cascade" }),
+    planningMonthId: uuid("planning_month_id").references(() => planningMonth.id, { onDelete: "cascade" }),
     actorId: text("actor_id").references(() => user.id, { onDelete: "set null" }),
     actorName: text("actor_name"),
     data: jsonb("data").$type<PortalNotificationData>().notNull(),
@@ -84,5 +84,6 @@ export const portalNotification = pgTable(
     uniqueIndex("portal_notification_open_message_idx")
       .on(table.portalUserId, table.clientRequestId)
       .where(sql`${table.type} = 'request.message' and ${table.readAt} is null`),
+    check("portal_notification_target_check", sql`num_nonnulls(${table.clientRequestId}, ${table.planningMonthId}) = 1`),
   ],
 );
